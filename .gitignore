@@ -216,3 +216,30 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-Specific Ignores (Kanban Suite)
+
+
+# Task storage and export files generated during app execution
+*.json
+*.csv
+!examples/*.json
+!examples/*.csv
+
+# Operating System artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE settings (Uncomment if using VSCode or PyCharm)
+.vscode/
+.idea/
+
+# Local testing and debug dumps
+*.log
+tmp/
+temp/
