@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import config
+from gui.kanban_board import KanbanBoard
 
 
 class MainWindow:
@@ -15,6 +16,11 @@ class MainWindow:
         # Build UI Components
         self._build_menu()
         self._build_header()
+        
+        # Embed Kanban Board Widget
+        self.board = KanbanBoard(self.root)
+        self.board.pack(fill=tk.BOTH, expand=True)
+        
         self._build_footer()
 
     def _build_menu(self):
@@ -37,8 +43,7 @@ class MainWindow:
         self.root.config(menu=menubar)
 
     def _build_header(self):
-        """Builds the top header banner frame."""
-        # FIX: Changed py=12, px=10 to pady=12, padx=10
+        #Builds the top header banner frame.
         header_frame = tk.Frame(self.root, bg=config.FRAME_BG, pady=12, padx=10)
         header_frame.pack(fill=tk.X, side=tk.TOP)
 
@@ -81,5 +86,5 @@ class MainWindow:
         )
 
     def _on_placeholder_click(self):
-        """Temporary handler for upcoming actions."""
+        #Temporary handler for upcoming actions
         messagebox.showinfo("Notice", "Feature will be fully linked in upcoming board views.")
