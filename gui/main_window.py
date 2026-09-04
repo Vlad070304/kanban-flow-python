@@ -24,12 +24,13 @@ class MainWindow:
         self._build_footer()
 
     def _build_menu(self):
-        """Creates the top application navigation menu."""
+        # Creates the top application navigation menu
         menubar = tk.Menu(self.root)
 
         # File Dropdown Menu
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="New Task", command=self._on_placeholder_click)
+        file_menu.add_command(label="New Task", command=lambda: self.board.entry_title.focus_set())
+        file_menu.add_command(label="Export to CSV", command=lambda: self.board.export_csv_async())
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit)
         menubar.add_cascade(label="File", menu=file_menu)
@@ -39,11 +40,10 @@ class MainWindow:
         help_menu.add_command(label="About", command=self._show_about_dialog)
         menubar.add_cascade(label="Help", menu=help_menu)
 
-        # Attach menu bar to root window
         self.root.config(menu=menubar)
 
     def _build_header(self):
-        #Builds the top header banner frame.
+        # Builds the top header banner frame
         header_frame = tk.Frame(self.root, bg=config.FRAME_BG, pady=12, padx=10)
         header_frame.pack(fill=tk.X, side=tk.TOP)
 
@@ -66,7 +66,7 @@ class MainWindow:
         subtitle_lbl.pack(side=tk.RIGHT, pady=3)
 
     def _build_footer(self):
-        """Builds the bottom status bar frame."""
+        # Builds the bottom status bar frame
         footer_frame = tk.Frame(self.root, bg=config.FRAME_BG, pady=4, padx=10)
         footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
 
@@ -84,7 +84,3 @@ class MainWindow:
             "About Kanban Suite",
             f"{config.WINDOW_TITLE}\nVersion: {config.APP_VERSION}\n\nBuilt with Python & Tkinter."
         )
-
-    def _on_placeholder_click(self):
-        #Temporary handler for upcoming actions
-        messagebox.showinfo("Notice", "Feature will be fully linked in upcoming board views.")

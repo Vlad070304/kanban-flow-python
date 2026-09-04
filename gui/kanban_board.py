@@ -1,5 +1,7 @@
+import threading
+import time
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 import config
 
 
@@ -29,8 +31,6 @@ class KanbanBoard(tk.Frame):
             highlightthickness=0
         )
         self.canvas.pack(fill=tk.X, padx=15, pady=(10, 5))
-        
-        # Recalculate canvas progress bar when window is resized
         self.canvas.bind("<Configure>", lambda e: self.update_progress_bar())
 
     def update_progress_bar(self):
@@ -38,25 +38,22 @@ class KanbanBoard(tk.Frame):
         self.canvas.delete("all")
         width = self.canvas.winfo_width()
         if width <= 1:
-            width = 880  # Default fallback width before render
+            width = 880
             
         ratio = (self.done_cards / self.total_cards) if self.total_cards > 0 else 0.0
         fill_width = max(10, (width - 20) * ratio)
 
-        # Draw outer background box
         self.canvas.create_rectangle(
             10, 5, width - 10, 30, 
             outline=config.TEXT_COLOR, 
             fill=config.BG_COLOR,
             width=1
         )
-        # Draw filled progress bar
         self.canvas.create_rectangle(
             10, 5, fill_width, 30, 
             fill="#A6E3A1", 
             outline=""
         )
-        # Draw progress text over canvas
         percent_str = f"Board Completion: {int(ratio * 100)}% ({self.done_cards}/{self.total_cards} Tasks)"
         self.canvas.create_text(
             width / 2, 17, 
@@ -96,7 +93,7 @@ class KanbanBoard(tk.Frame):
             font=("Arial", 9, "bold")
         ).pack(side=tk.LEFT, padx=(0, 5))
         
-        self.entry_title = tk.Entry(panel, width=25, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white")
+        self.entry_title = tk.Entry(panel, width=22, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white")
         self.entry_title.pack(side=tk.LEFT, padx=5)
 
         tk.Label(
@@ -105,7 +102,7 @@ class KanbanBoard(tk.Frame):
             fg=config.TEXT_COLOR, 
             bg=config.FRAME_BG,
             font=("Arial", 9, "bold")
-        ).pack(side=tk.LEFT, padx=(15, 5))
+        ).pack(side=tk.LEFT, padx=(10, 5))
 
         self.priority_var = tk.IntVar(value=1)
         tk.Radiobutton(
@@ -127,12 +124,65 @@ class KanbanBoard(tk.Frame):
             relief=tk.FLAT,
             command=self.add_task_card
         )
-        btn_add.pack(side=tk.LEFT, padx=15)
+        btn_add.pack(side=tk.LEFT, padx=10)
+
+        # Multi-threading Trigger Button: Background Focus Timer
+        btn_timer = tk.Button(
+            panel,
+            text="⏱ Start 10s Focus",
+            bg="#FAB387",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            command=lambda: self.start_focus_timer(10)
+        )
+        btn_timer.pack(side=tk.LEFT, padx=5)
 
     def _bind_keyboard_events(self):
         # Binds global app key events for quicker navigation
         self.parent.bind("<Control-n>", lambda e: self.entry_title.focus_set())
         self.parent.bind("<Escape>", lambda e: self.entry_title.delete(0, tk.END))
+
+    def start_focus_timer(self, duration_sec: int):
+        # Starts a background thread for a focus timer so the Tkinter UI stays active
+        def timer_worker():
+            time.sleep(duration_sec)
+            # Use after() to schedule main-thread GUI popup thread-safely
+            self.after(0, lambda: messagebox.showinfo("Focus Session", f"🎉 Focus timer of {duration_sec}s completed!"))
+
+        thread = threading.Thread(target=timer_worker, daemon=True)
+        thread.start()
+
+    def export_csv_async(self):
+        # Prompts file save dialog and writes board tasks to CSV inside a background thread
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
+        )
+        if not filepath:
+            return
+
+        def export_worker():
+            try:
+                # Collect cards data across column frames
+                lines = ["Title,Status,Priority\n"]
+                for col_name, frame in self.column_frames.items():
+                    for card in frame.winfo_children():
+                        labels = card.winfo_children()
+                        if len(labels) >= 2:
+                            title = labels[0].cget("text").replace(",", " ")
+                            priority_str = "HIGH" if "HIGH" in labels[1].cget("text") else "LOW"
+                            lines.append(f"{title},{col_name},{priority_str}\n")
+                
+                # Write file asynchronously
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.writelines(lines)
+
+                self.after(0, lambda: messagebox.showinfo("Export Success", f"Board exported to:\n{filepath}"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Export Error", f"Failed to export CSV: {e}"))
+
+        threading.Thread(target=export_worker, daemon=True).start()
 
     def add_task_card(self):
         # Validates input and dynamically renders a card with click event handlers
@@ -145,7 +195,6 @@ class KanbanBoard(tk.Frame):
         priority_text = "HIGH" if self.priority_var.get() == 2 else "LOW"
         priority_color = config.ACCENT_COLOR if priority_text == "HIGH" else config.TEXT_COLOR
 
-        # Create Card Widget inside 'To Do'
         card = tk.Frame(self.column_frames["To Do"], bg=config.CARD_BG, bd=1, relief=tk.RAISED)
         card.pack(fill=tk.X, padx=8, pady=5)
         card.column_name = "To Do"
@@ -162,11 +211,9 @@ class KanbanBoard(tk.Frame):
         )
         lbl_priority.pack(fill=tk.X, padx=8, pady=(0, 6))
 
-        # Event Binding: Bind Mouse Click to advance card status
         for widget in (card, lbl_title, lbl_priority):
             widget.bind("<Button-1>", lambda e, c=card: self._advance_card_status(c))
 
-        # Update metrics
         self.total_cards += 1
         self.update_progress_bar()
         self.entry_title.delete(0, tk.END)
@@ -192,14 +239,11 @@ class KanbanBoard(tk.Frame):
             self.update_progress_bar()
             return
 
-        # Safeguard if next_col was not assigned
         if not next_col:
             return
 
-        # Destroy old card widget
         card.destroy()
 
-        # Build new card in destination column
         new_card = tk.Frame(self.column_frames[next_col], bg=config.CARD_BG, bd=1, relief=tk.RAISED)
         new_card.pack(fill=tk.X, padx=8, pady=5)
         new_card.column_name = next_col
@@ -219,7 +263,6 @@ class KanbanBoard(tk.Frame):
         )
         lbl_priority.pack(fill=tk.X, padx=8, pady=(0, 6))
 
-        # Re-bind click event to the new card
         for widget in (new_card, lbl_title, lbl_priority):
             widget.bind("<Button-1>", lambda e, c=new_card: self._advance_card_status(c))
 
