@@ -6,17 +6,21 @@ from gui.kanban_board import KanbanBoard
 
 
 class TestKanbanBoard(unittest.TestCase):
-    #Test suite for validating board logic and file serialization.
+    # Test suite for validating board logic and file serialization.
 
     def setUp(self):
-        # Create a hidden Tk root window and clean test environment.
+        # Create a hidden Tk root window and set isolated test file path.
         self.root = tk.Tk()
         self.root.withdraw()
         self.test_file = "test_kanban_data.json"
 
-        # Instantiate board frame and override default file path
+        # Ensure no residual test JSON exists before test run
+        if os.path.exists(self.test_file):
+            os.remove(self.test_file)
+
+        # Patch class-level DATA_FILE before instantiation
+        KanbanBoard.DATA_FILE = self.test_file
         self.board = KanbanBoard(self.root)
-        self.board.DATA_FILE = self.test_file
 
     def tearDown(self):
         # Clean up created test JSON files and destroy Tk window.
