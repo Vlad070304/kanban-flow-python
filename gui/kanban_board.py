@@ -147,32 +147,44 @@ class KanbanBoard(tk.Frame):
             fg="#11111B",
             font=("Arial", 9, "bold"),
             relief=tk.FLAT,
+            cursor="hand2",
             command=self.add_task_card
         )
         btn_add.pack(side=tk.LEFT, padx=5)
 
         btn_timer = tk.Button(
             panel,
-            text="⏱ Start 10s Focus",
+            text="Start 10s Focus",
             bg="#FAB387",
             fg="#11111B",
             font=("Arial", 9, "bold"),
             relief=tk.FLAT,
+            cursor="hand2",
             command=self._on_timer_button_click
         )
         btn_timer.pack(side=tk.LEFT, padx=5)
 
-        # Clear Done tasks button
         btn_clear_done = tk.Button(
             panel,
-            text="🧹 Clear Done",
+            text="Clear Done",
             bg="#F38BA8",
             fg="#11111B",
             font=("Arial", 9, "bold"),
             relief=tk.FLAT,
+            cursor="hand2",
             command=self.clear_done_tasks
         )
         btn_clear_done.pack(side=tk.LEFT, padx=5)
+
+        # Attach interactive hover effects
+        self._apply_hover_effect(btn_add, config.ACCENT_COLOR, config.BTN_HOVER_ADD)
+        self._apply_hover_effect(btn_timer, "#FAB387", config.BTN_HOVER_TIMER)
+        self._apply_hover_effect(btn_clear_done, "#F38BA8", config.BTN_HOVER_CLEAR)
+
+    def _apply_hover_effect(self, widget: tk.Widget, default_bg: str, hover_bg: str):
+        # Dynamically alters widget background color on mouse hover events.
+        widget.bind("<Enter>", lambda e: widget.config(bg=hover_bg))
+        widget.bind("<Leave>", lambda e: widget.config(bg=default_bg))
 
     def _on_timer_button_click(self):
         # Handler for focus timer trigger button.
