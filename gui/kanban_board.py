@@ -243,8 +243,57 @@ class KanbanBoard(tk.Frame):
         except (IOError, json.JSONDecodeError) as err:
             print(f"Error loading data: {err}")
 
+    def _open_edit_dialog(self, card, title: str, priority_text: str):
+        # Opens top-level modal dialog to modify card title and priority.
+        dialog = tk.Toplevel(self)
+        dialog.title("Edit Task")
+        dialog.geometry("320x170")
+        dialog.configure(bg=config.FRAME_BG)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        tk.Label(
+            dialog, text="Edit Task Title:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
+            font=("Arial", 9, "bold")
+        ).pack(anchor="w", padx=15, pady=(15, 2))
+
+        entry = tk.Entry(dialog, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white")
+        entry.insert(0, title)
+        entry.pack(fill=tk.X, padx=15, pady=2)
+
+        prio_var = tk.IntVar(value=2 if priority_text == "HIGH" else 1)
+        prio_frame = tk.Frame(dialog, bg=config.FRAME_BG)
+        prio_frame.pack(fill=tk.X, padx=15, pady=5)
+
+        tk.Radiobutton(
+            prio_frame, text="Low Priority", variable=prio_var, value=1,
+            bg=config.FRAME_BG, fg=config.TEXT_COLOR, selectcolor=config.BG_COLOR
+        ).pack(side=tk.LEFT)
+
+        tk.Radiobutton(
+            prio_frame, text="High Priority", variable=prio_var, value=2,
+            bg=config.FRAME_BG, fg=config.ACCENT_COLOR, selectcolor=config.BG_COLOR
+        ).pack(side=tk.LEFT)
+
+        def save_changes():
+            # Validates entry and replaces task widget attributes on save.
+            new_title = entry.get().strip()
+            if new_title:
+                new_prio = "HIGH" if prio_var.get() == 2 else "LOW"
+                col_name = card.column_name
+                card.destroy()
+                self._create_card_widget(new_title, new_prio, col_name)
+                self.save_board_data()
+                dialog.destroy()
+
+        tk.Button(
+            dialog, text="Save Changes", bg=config.ACCENT_COLOR, fg="#11111B",
+            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
+            command=save_changes
+        ).pack(pady=10)
+
     def _create_card_widget(self, title: str, priority_text: str, column_name: str):
-        # Creates card frame element in designated column.
+        # Creates card frame element in designated column with debounced click handlers.
         priority_color = (
             config.ACCENT_COLOR if priority_text == "HIGH" else config.TEXT_COLOR
         )
@@ -268,8 +317,33 @@ class KanbanBoard(tk.Frame):
         )
         lbl_priority.pack(fill=tk.X, padx=8, pady=(0, 6))
 
+        # Store click timer ID on card instance to avoid double-triggering
+        card.click_after_id = None
+
+        def handle_single_click(event, target_card):
+            # Cancels any pending click timer before scheduling a new delayed move.
+            if target_card.click_after_id is not None:
+                self.after_cancel(target_card.click_after_id)
+            
+            target_card.click_after_id = self.after(
+                250, lambda: self._advance_card_status(target_card)
+            )
+
+        def handle_double_click(event, target_card, t_title, t_priority):
+            # Cancels pending single click move and opens edit dialog.
+            if target_card.click_after_id is not None:
+                self.after_cancel(target_card.click_after_id)
+                target_card.click_after_id = None
+            
+            self._open_edit_dialog(target_card, t_title, t_priority)
+
+        # Attach debounced click events to card and inner labels
         for widget in (card, lbl_title, lbl_priority):
-            widget.bind("<Button-1>", lambda e, c=card: self._advance_card_status(c))
+            widget.bind("<Button-1>", lambda e, c=card: handle_single_click(e, c))
+            widget.bind(
+                "<Double-Button-1>",
+                lambda e, c=card, t=title, p=priority_text: handle_double_click(e, c, t, p)
+            )
 
     def clear_done_tasks(self):
         # Removes all tasks in the 'Done' column and saves changes.
@@ -287,7 +361,7 @@ class KanbanBoard(tk.Frame):
             self.after(
                 0,
                 lambda: messagebox.showinfo(
-                    "Focus Session", f"🎉 Focus timer of {duration_sec}s completed!"
+                    "Focus Session", f"Focus timer of {duration_sec}s completed!"
                 )
             )
 
