@@ -1,7 +1,7 @@
 """
 gui/kanban_board.py
 Kanban board component handling task rendering, JSON persistence,
-card editing dialogs, and background thread operations.
+card editing dialogs, background thread operations, and event logging.
 """
 
 import json
@@ -11,6 +11,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import config
+from services.event_logger import EventLogger
 
 
 class KanbanBoard(tk.Frame):
@@ -187,7 +188,6 @@ class KanbanBoard(tk.Frame):
         )
         btn_clear_done.pack(side=tk.LEFT, padx=5)
 
-        # Attach interactive hover effects
         self._apply_hover_effect(btn_add, config.ACCENT_COLOR, config.BTN_HOVER_ADD)
         self._apply_hover_effect(btn_timer, "#FAB387", config.BTN_HOVER_TIMER)
         self._apply_hover_effect(btn_clear_done, "#F38BA8", config.BTN_HOVER_CLEAR)
@@ -287,7 +287,6 @@ class KanbanBoard(tk.Frame):
         ).pack(side=tk.LEFT)
 
         def save_changes():
-            # Validates entry and replaces task widget attributes on save.
             new_title = entry.get().strip()
             if new_title:
                 new_prio = "HIGH" if prio_var.get() == 2 else "LOW"
@@ -328,11 +327,9 @@ class KanbanBoard(tk.Frame):
         )
         lbl_priority.pack(fill=tk.X, padx=8, pady=(0, 6))
 
-        # Store click timer ID on card instance to avoid double-triggering
         card.click_after_id = None
 
         def handle_single_click(_event, target_card):
-            # Cancels any pending click timer before scheduling a new delayed move.
             if target_card.click_after_id is not None:
                 self.after_cancel(target_card.click_after_id)
 
@@ -341,14 +338,12 @@ class KanbanBoard(tk.Frame):
             )
 
         def handle_double_click(_event, target_card, t_title, t_priority):
-            # Cancels pending single click move and opens edit dialog.
             if target_card.click_after_id is not None:
                 self.after_cancel(target_card.click_after_id)
                 target_card.click_after_id = None
 
             self._open_edit_dialog(target_card, t_title, t_priority)
 
-        # Attach debounced click events to card and inner labels
         for widget in (card, lbl_title, lbl_priority):
             widget.bind("<Button-1>", lambda e, c=card: handle_single_click(e, c))
             widget.bind(
@@ -420,7 +415,7 @@ class KanbanBoard(tk.Frame):
         threading.Thread(target=export_worker, daemon=True).start()
 
     def add_task_card(self):
-        """Validates entry, renders task card, and persists data."""
+        """Validates entry, renders task card, persists data, and logs creation event."""
         title = self.entry_title.get().strip()
 
         if not title:
@@ -432,10 +427,12 @@ class KanbanBoard(tk.Frame):
         self._create_card_widget(title, priority_text, "To Do")
         self.update_progress_bar()
         self.save_board_data()
+        EventLogger.log_event("TASK_CREATED", title, {"priority": priority_text})
+
         self.entry_title.delete(0, tk.END)
 
     def _advance_card_status(self, card):
-        """Advances task card column or removes it, updating persistent state."""
+        """Advances task card column or removes it, updating state and event log."""
         title = card.winfo_children()[0].cget("text")
         priority_info = card.winfo_children()[1].cget("text")
         is_high = "HIGH" in priority_info
@@ -462,3 +459,6 @@ class KanbanBoard(tk.Frame):
         self._create_card_widget(title, priority_text, next_col)
         self.update_progress_bar()
         self.save_board_data()
+
+        if next_col == "Done":
+            EventLogger.log_event("TASK_COMPLETED", title, {"priority": priority_text})
