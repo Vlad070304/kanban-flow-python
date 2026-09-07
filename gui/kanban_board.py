@@ -10,7 +10,9 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
+
 import config
+from gui.analytics import AnalyticsWindow
 from services.event_logger import EventLogger
 
 
@@ -176,6 +178,18 @@ class KanbanBoard(tk.Frame):
         )
         btn_timer.pack(side=tk.LEFT, padx=5)
 
+        btn_analytics = tk.Button(
+            panel,
+            text="Analytics",
+            bg="#89B4FA",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: AnalyticsWindow(self.parent, self)
+        )
+        btn_analytics.pack(side=tk.LEFT, padx=5)
+
         btn_clear_done = tk.Button(
             panel,
             text="Clear Done",
@@ -190,6 +204,7 @@ class KanbanBoard(tk.Frame):
 
         self._apply_hover_effect(btn_add, config.ACCENT_COLOR, config.BTN_HOVER_ADD)
         self._apply_hover_effect(btn_timer, "#FAB387", config.BTN_HOVER_TIMER)
+        self._apply_hover_effect(btn_analytics, "#89B4FA", "#B4BEFE")
         self._apply_hover_effect(btn_clear_done, "#F38BA8", config.BTN_HOVER_CLEAR)
 
     def _apply_hover_effect(self, widget: tk.Widget, default_bg: str, hover_bg: str):
@@ -427,6 +442,7 @@ class KanbanBoard(tk.Frame):
         self._create_card_widget(title, priority_text, "To Do")
         self.update_progress_bar()
         self.save_board_data()
+
         EventLogger.log_event("TASK_CREATED", title, {"priority": priority_text})
 
         self.entry_title.delete(0, tk.END)
