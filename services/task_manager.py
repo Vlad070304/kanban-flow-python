@@ -1,3 +1,8 @@
+"""
+services/task_manager.py
+Task management service handling CRUD operations and JSON persistence.
+"""
+
 import json
 import os
 from typing import List
@@ -5,48 +10,48 @@ from models.task import Task
 
 
 class TaskManager:
-    #Manages task lifecycle, filtering, and JSON serialization.
+    """Service class managing task lifecycle state and file I/O operations."""
 
     def __init__(self, storage_file: str = "kanban_data.json"):
-        #Initialize manager with dynamic or default storage path.
+        """Initializes task collection and specifies storage file path."""
         self.storage_file = storage_file
         self.tasks: List[Task] = []
 
     def add_task(self, title: str, priority: str = "LOW", status: str = "To Do") -> Task:
-        #Create and store a new task model.
+        """Creates and appends a new Task instance to the manager state."""
         task = Task(title=title, priority=priority, status=status)
         self.tasks.append(task)
         return task
 
-    def remove_task(self, task_id: str) -> None:
-        #Remove task matching target ID.
+    def remove_task(self, task_id: str) -> bool:
+        """Removes a task matching the target task ID."""
+        initial_len = len(self.tasks)
         self.tasks = [t for t in self.tasks if t.task_id != task_id]
+        return len(self.tasks) < initial_len
 
-    def clear_done(self) -> None:
-        #Remove all completed tasks.
+    def clear_done(self):
+        """Removes all tasks currently marked with status 'Done'."""
         self.tasks = [t for t in self.tasks if t.status != "Done"]
 
-    def save_to_file(self) -> None:
-        #Serialize current task models to JSON.
+    def save_to_file(self):
+        """Saves active task collection to disk as JSON."""
         data = [t.to_dict() for t in self.tasks]
         try:
             with open(self.storage_file, "w", encoding="utf-8") as file:
                 json.dump(data, file, indent=4)
         except (IOError, TypeError) as err:
-            print(f"Error saving task data: {err}")
+            print(f"Error saving file: {err}")
 
     def load_from_file(self) -> List[Task]:
-        #Deserialize tasks from JSON storage.
+        """Loads task objects from disk into manager state."""
         if not os.path.exists(self.storage_file):
-            self.tasks = []
-            return self.tasks
+            return []
 
         try:
             with open(self.storage_file, "r", encoding="utf-8") as file:
                 data = json.load(file)
                 self.tasks = [Task.from_dict(item) for item in data]
+                return self.tasks
         except (IOError, json.JSONDecodeError) as err:
-            print(f"Error loading task data: {err}")
-            self.tasks = []
-
-        return self.tasks
+            print(f"Error loading file: {err}")
+            return []

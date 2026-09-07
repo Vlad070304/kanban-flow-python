@@ -1,3 +1,9 @@
+"""
+gui/kanban_board.py
+Kanban board component handling task rendering, JSON persistence,
+card editing dialogs, and background thread operations.
+"""
+
 import json
 import os
 import threading
@@ -8,10 +14,15 @@ import config
 
 
 class KanbanBoard(tk.Frame):
+    """
+    Main Kanban board frame managing columns, card components,
+    data persistence, and timer threads.
+    """
+
     DATA_FILE = "kanban_data.json"
 
     def __init__(self, parent):
-        # Initializes board state, UI structure, and loads saved task data.
+        """Initializes board state, UI structure, and loads saved task data."""
         super().__init__(parent, bg=config.BG_COLOR)
         self.parent = parent
         self.columns = ["To Do", "In Progress", "Done"]
@@ -28,7 +39,7 @@ class KanbanBoard(tk.Frame):
         self.load_board_data()
 
     def _setup_canvas_metric(self):
-        # Creates dynamic Tkinter Canvas progress bar widget.
+        """Creates dynamic Tkinter Canvas progress bar widget."""
         self.canvas = tk.Canvas(
             self,
             height=35,
@@ -39,11 +50,11 @@ class KanbanBoard(tk.Frame):
         self.canvas.bind("<Configure>", self._on_canvas_resize)
 
     def _on_canvas_resize(self, _event):
-        # Event handler to recalculate canvas render on window resize.
+        """Event handler to recalculate canvas render on window resize."""
         self.update_progress_bar()
 
     def update_progress_bar(self):
-        # Recalculates card counts and updates the progress bar visually.
+        """Recalculates card counts and updates the progress bar visually."""
         total = 0
         done = 0
         for col_name, frame in self.column_frames.items():
@@ -86,7 +97,7 @@ class KanbanBoard(tk.Frame):
         )
 
     def _setup_board_columns(self):
-        # Renders column frames side-by-side.
+        """Renders column frames side-by-side."""
         board_container = tk.Frame(self, bg=config.BG_COLOR)
         board_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
@@ -104,7 +115,7 @@ class KanbanBoard(tk.Frame):
             self.column_frames[col_name] = col_frame
 
     def _setup_input_panel(self):
-        # Renders input controls panel at the bottom.
+        """Renders input controls panel at the bottom."""
         panel = tk.Frame(self, bg=config.FRAME_BG, pady=10, padx=10)
         panel.pack(fill=tk.X, side=tk.BOTTOM)
 
@@ -182,29 +193,29 @@ class KanbanBoard(tk.Frame):
         self._apply_hover_effect(btn_clear_done, "#F38BA8", config.BTN_HOVER_CLEAR)
 
     def _apply_hover_effect(self, widget: tk.Widget, default_bg: str, hover_bg: str):
-        # Dynamically alters widget background color on mouse hover events.
+        """Dynamically alters widget background color on mouse hover events."""
         widget.bind("<Enter>", lambda e: widget.config(bg=hover_bg))
         widget.bind("<Leave>", lambda e: widget.config(bg=default_bg))
 
     def _on_timer_button_click(self):
-        # Handler for focus timer trigger button.
+        """Handler for focus timer trigger button."""
         self.start_focus_timer(10)
 
     def _bind_keyboard_events(self):
-        # Binds global app key shortcuts.
+        """Binds global app key shortcuts."""
         self.parent.bind("<Control-n>", self._on_focus_shortcut)
         self.parent.bind("<Escape>", self._on_clear_shortcut)
 
     def _on_focus_shortcut(self, _event):
-        # Sets focus to the title input entry widget.
+        """Sets focus to the title input entry widget."""
         self.entry_title.focus_set()
 
     def _on_clear_shortcut(self, _event):
-        # Clears text from title entry widget.
+        """Clears text from title entry widget."""
         self.entry_title.delete(0, tk.END)
 
     def save_board_data(self):
-        # Serializes board state into local JSON file.
+        """Serializes board state into local JSON file."""
         data = []
         for col_name, frame in self.column_frames.items():
             for card in frame.winfo_children():
@@ -224,7 +235,7 @@ class KanbanBoard(tk.Frame):
             print(f"Error saving data: {err}")
 
     def load_board_data(self):
-        # Populates board components from saved JSON file.
+        """Populates board components from saved JSON file."""
         if not os.path.exists(self.DATA_FILE):
             return
 
@@ -244,7 +255,7 @@ class KanbanBoard(tk.Frame):
             print(f"Error loading data: {err}")
 
     def _open_edit_dialog(self, card, title: str, priority_text: str):
-        # Opens top-level modal dialog to modify card title and priority.
+        """Opens top-level modal dialog to modify card title and priority."""
         dialog = tk.Toplevel(self)
         dialog.title("Edit Task")
         dialog.geometry("320x170")
@@ -293,7 +304,7 @@ class KanbanBoard(tk.Frame):
         ).pack(pady=10)
 
     def _create_card_widget(self, title: str, priority_text: str, column_name: str):
-        # Creates card frame element in designated column with debounced click handlers.
+        """Creates card frame element in designated column with debounced click handlers."""
         priority_color = (
             config.ACCENT_COLOR if priority_text == "HIGH" else config.TEXT_COLOR
         )
@@ -320,21 +331,21 @@ class KanbanBoard(tk.Frame):
         # Store click timer ID on card instance to avoid double-triggering
         card.click_after_id = None
 
-        def handle_single_click(event, target_card):
+        def handle_single_click(_event, target_card):
             # Cancels any pending click timer before scheduling a new delayed move.
             if target_card.click_after_id is not None:
                 self.after_cancel(target_card.click_after_id)
-            
+
             target_card.click_after_id = self.after(
                 250, lambda: self._advance_card_status(target_card)
             )
 
-        def handle_double_click(event, target_card, t_title, t_priority):
+        def handle_double_click(_event, target_card, t_title, t_priority):
             # Cancels pending single click move and opens edit dialog.
             if target_card.click_after_id is not None:
                 self.after_cancel(target_card.click_after_id)
                 target_card.click_after_id = None
-            
+
             self._open_edit_dialog(target_card, t_title, t_priority)
 
         # Attach debounced click events to card and inner labels
@@ -346,7 +357,7 @@ class KanbanBoard(tk.Frame):
             )
 
     def clear_done_tasks(self):
-        # Removes all tasks in the 'Done' column and saves changes.
+        """Removes all tasks in the 'Done' column and saves changes."""
         done_frame = self.column_frames["Done"]
         for card in done_frame.winfo_children():
             card.destroy()
@@ -355,7 +366,7 @@ class KanbanBoard(tk.Frame):
         self.save_board_data()
 
     def start_focus_timer(self, duration_sec: int):
-        # Spawns background timer thread.
+        """Spawns background timer thread."""
         def timer_worker():
             time.sleep(duration_sec)
             self.after(
@@ -369,7 +380,7 @@ class KanbanBoard(tk.Frame):
         thread.start()
 
     def export_csv_async(self):
-        # Prompts dialog and writes board contents to CSV asynchronously.
+        """Prompts dialog and writes board contents to CSV asynchronously."""
         filepath = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
@@ -409,7 +420,7 @@ class KanbanBoard(tk.Frame):
         threading.Thread(target=export_worker, daemon=True).start()
 
     def add_task_card(self):
-        # Validates entry, renders task card, and persists data.
+        """Validates entry, renders task card, and persists data."""
         title = self.entry_title.get().strip()
 
         if not title:
@@ -424,7 +435,7 @@ class KanbanBoard(tk.Frame):
         self.entry_title.delete(0, tk.END)
 
     def _advance_card_status(self, card):
-        # Advances task card column or removes it, updating persistent state.
+        """Advances task card column or removes it, updating persistent state."""
         title = card.winfo_children()[0].cget("text")
         priority_info = card.winfo_children()[1].cget("text")
         is_high = "HIGH" in priority_info

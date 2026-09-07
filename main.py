@@ -1,15 +1,16 @@
+"""
+main.py
+Application entry point initializing the main window interface and menu components.
+"""
+
 import tkinter as tk
 from gui.main_window import MainWindow
 
 
 def main():
-    # Initialize main Tkinter application instance
+    """Instantiates and launches the main application loop."""
     root = tk.Tk()
-    
-    # Pass root window to MainWindow layout controller
-    app = MainWindow(root)
-    
-    # Start event loop
+    _app = MainWindow(root)
     root.mainloop()
 
 
