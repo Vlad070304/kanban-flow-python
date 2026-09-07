@@ -1,188 +1,349 @@
 """
 gui/analytics.py
-Analytics window featuring performance charts and an interactive log viewer tab.
+Analytics dashboard window displaying completed tasks, productivity statistics,
+total focus time, native visual charts, and activity history export.
 """
 
+from collections import defaultdict
+import concurrent.futures
+import datetime
 import tkinter as tk
-from tkinter import ttk
+from tkinter import filedialog, messagebox, ttk
+
 import config
 from services.event_logger import EventLogger
 
+THREAD_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
 
 class AnalyticsWindow(tk.Toplevel):
-    """Top-level window displaying analytics dashboard and historical event log tab."""
+    """Top-level modal window showing task completion metrics, charts, and export options."""
 
-    def __init__(self, parent, kanban_board):
-        """Initializes tabbed layout and renders chart and log components."""
+    def __init__(self, parent, board_ref):
         super().__init__(parent)
-        self.kanban_board = kanban_board
+        self.board = board_ref
 
-        self.title("Analytics & Event History")
-        self.geometry("520x540")
+        self.title("Productivity & Focus Analytics")
+        self.geometry("620x680")
         self.configure(bg=config.BG_COLOR)
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
 
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self._build_ui()
 
-        self.tab_dashboard = tk.Frame(self.notebook, bg=config.BG_COLOR)
-        self.tab_logs = tk.Frame(self.notebook, bg=config.BG_COLOR)
+    def _calculate_metrics(self):
+        """Processes event log file to calculate task, focus metrics, and daily trends."""
+        logs = EventLogger.read_logs()
 
-        self.notebook.add(self.tab_dashboard, text=" Dashboard & Chart ")
-        self.notebook.add(self.tab_logs, text=" Event Log Viewer ")
+        completed_tasks = [
+            log for log in logs if log.get("event") == "TASK_COMPLETED"
+        ]
+        completed_count = len(completed_tasks)
 
-        self.counts = {}
-        self._render_dashboard_tab()
-        self._render_logs_tab()
+        focus_sessions = [
+            log for log in logs if log.get("event") == "FOCUS_SESSION_COMPLETED"
+        ]
+        focus_session_count = len(focus_sessions)
 
-    def _calculate_metrics(self) -> dict:
-        """Computes current task states and historical counts."""
-        counts = {"To Do": 0, "In Progress": 0, "Done": 0, "High Priority": 0}
+        total_focus_minutes = 0
+        for session in focus_sessions:
+            details = session.get("details", {})
+            total_focus_minutes += details.get("duration_min", 0)
 
-        for col_name, frame in self.kanban_board.column_frames.items():
-            for card in frame.winfo_children():
-                if col_name in counts:
-                    counts[col_name] += 1
-                labels = card.winfo_children()
-                if len(labels) >= 2 and "HIGH" in labels[1].cget("text"):
-                    counts["High Priority"] += 1
+        daily_tasks = defaultdict(int)
+        daily_focus = defaultdict(int)
 
-        total_tasks = counts["To Do"] + counts["In Progress"] + counts["Done"]
-        completion_rate = (
-            (counts["Done"] / total_tasks * 100) if total_tasks > 0 else 0
-        )
+        for log in logs:
+            ts_str = log.get("timestamp", "")
+            if not ts_str:
+                continue
+            date_key = ts_str.split(" ")[0]
 
-        events = EventLogger.load_events()
-        completed_events = len(
-            [e for e in events if e.get("event_type") == "TASK_COMPLETED"]
-        )
-
-        if counts["In Progress"] > 4:
-            health_status = "[WARNING] WIP Bottleneck (>4 active)"
-        elif counts["High Priority"] > 2:
-            health_status = "[RISK] Stalled High Priority Tasks"
-        else:
-            health_status = "[OK] Healthy Flow"
-
-        self.counts = counts
+            if log.get("event") == "TASK_COMPLETED":
+                daily_tasks[date_key] += 1
+            elif log.get("event") == "FOCUS_SESSION_COMPLETED":
+                dur = log.get("details", {}).get("duration_min", 0)
+                daily_focus[date_key] += dur
 
         return {
-            "Total Active Tasks": total_tasks,
-            "Historical Completed Events": completed_events,
-            "Completion Rate": f"{int(completion_rate)}%",
-            "Board Health": health_status,
+            "completed_count": completed_count,
+            "focus_session_count": focus_session_count,
+            "total_focus_minutes": total_focus_minutes,
+            "daily_tasks": daily_tasks,
+            "daily_focus": daily_focus,
+            "logs": logs
         }
 
-    def _render_dashboard_tab(self):
-        """Renders metrics panel and canvas bar chart."""
-        tk.Label(
-            self.tab_dashboard,
-            text="Project Overview & Health",
-            font=("Arial", 12, "bold"),
-            fg=config.TEXT_COLOR,
-            bg=config.BG_COLOR,
-        ).pack(pady=(10, 5))
-
+    def _build_ui(self):
+        """Constructs metric summary cards, native chart, and log export controls."""
         metrics = self._calculate_metrics()
 
-        for label, val in metrics.items():
-            frame = tk.Frame(self.tab_dashboard, bg=config.FRAME_BG, pady=4, padx=12)
-            frame.pack(fill=tk.X, padx=15, pady=2)
+        # Header Title
+        header_frame = tk.Frame(self, bg=config.BG_COLOR)
+        header_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
 
-            is_health = label == "Board Health"
-            val_str = str(val)
-            val_color = (
-                "#F38BA8"
-                if "[WARNING]" in val_str or "[RISK]" in val_str
-                else (config.ACCENT_COLOR if not is_health else "#A6E3A1")
-            )
-
-            tk.Label(
-                frame, text=f"{label}:", font=("Arial", 9, "bold"),
-                fg=config.TEXT_COLOR, bg=config.FRAME_BG
-            ).pack(side=tk.LEFT)
-
-            tk.Label(
-                frame, text=val_str, font=("Arial", 9 if is_health else 10, "bold"),
-                fg=val_color, bg=config.FRAME_BG
-            ).pack(side=tk.RIGHT)
-
-        self._render_distribution_chart()
-
-    def _render_distribution_chart(self):
-        """Renders custom Tkinter Canvas bar chart."""
         tk.Label(
-            self.tab_dashboard,
-            text="Task Distribution",
-            font=("Arial", 11, "bold"),
+            header_frame,
+            text="Productivity Overview",
             fg=config.TEXT_COLOR,
             bg=config.BG_COLOR,
-        ).pack(pady=(12, 4))
+            font=("Arial", 14, "bold")
+        ).pack(side=tk.LEFT)
 
-        canvas = tk.Canvas(
-            self.tab_dashboard, height=170, bg=config.FRAME_BG, highlightthickness=0
+        btn_export = tk.Button(
+            header_frame,
+            text="Export Analytics CSV",
+            bg="#89B4FA",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=self._export_analytics_csv
         )
-        canvas.pack(fill=tk.X, padx=15, pady=5)
+        btn_export.pack(side=tk.RIGHT)
 
-        cols = ["To Do", "In Progress", "Done"]
-        colors = ["#F38BA8", "#FAB387", "#A6E3A1"]
-        max_val = max([self.counts.get(c, 0) for c in cols] + [1])
+        # Metrics Cards Container
+        cards_frame = tk.Frame(self, bg=config.BG_COLOR)
+        cards_frame.pack(fill=tk.X, padx=15, pady=10)
 
-        bar_width = 50
-        gap = 45
-        start_x = 75
-        max_bar_height = 100
+        self._create_stat_card(
+            cards_frame,
+            title="Completed Tasks",
+            value=str(metrics["completed_count"]),
+            accent_color="#A6E3A1"
+        )
 
-        for idx, col in enumerate(cols):
-            val = self.counts.get(col, 0)
-            height = (val / max_val) * max_bar_height
-            x0 = start_x + idx * (bar_width + gap)
-            y0 = 130 - height
-            x1 = x0 + bar_width
-            y1 = 130
+        self._create_stat_card(
+            cards_frame,
+            title="Focus Sessions",
+            value=f"{metrics['focus_session_count']}",
+            accent_color="#FAB387"
+        )
 
-            canvas.create_rectangle(x0, y0, x1, y1, fill=colors[idx], outline="")
+        hours, mins = divmod(metrics["total_focus_minutes"], 60)
+        time_display = f"{hours}h {mins}m" if hours > 0 else f"{mins} mins"
+        self._create_stat_card(
+            cards_frame,
+            title="Total Focus Time",
+            value=time_display,
+            accent_color="#89B4FA"
+        )
 
-            canvas.create_text(
-                x0 + bar_width / 2, y0 - 8,
-                text=str(val), fill=config.TEXT_COLOR, font=("Arial", 9, "bold")
-            )
+        # Chart Section (Native Tkinter Canvas)
+        chart_frame = tk.Frame(self, bg=config.FRAME_BG)
+        chart_frame.pack(fill=tk.X, padx=15, pady=10)
 
-            canvas.create_text(
-                x0 + bar_width / 2, 145,
-                text=col, fill=config.TEXT_COLOR, font=("Arial", 9)
-            )
+        self._render_native_chart(chart_frame, metrics)
 
-    def _render_logs_tab(self):
-        """Renders structured text box displaying event log history."""
-        frame = tk.Frame(self.tab_logs, bg=config.BG_COLOR)
-        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Recent Activity History Header
+        tk.Label(
+            self,
+            text="Recent Activity History",
+            fg=config.TEXT_COLOR,
+            bg=config.BG_COLOR,
+            font=("Arial", 10, "bold")
+        ).pack(anchor="w", padx=15, pady=(10, 5))
 
-        scrollbar = tk.Scrollbar(frame)
+        # Log Table Container
+        table_frame = tk.Frame(self, bg=config.FRAME_BG)
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
+
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure(
+            "Treeview",
+            background=config.FRAME_BG,
+            foreground=config.TEXT_COLOR,
+            fieldbackground=config.FRAME_BG,
+            rowheight=20,
+            font=("Arial", 8)
+        )
+        style.configure(
+            "Treeview.Heading",
+            background="#313244",
+            foreground=config.TEXT_COLOR,
+            font=("Arial", 8, "bold")
+        )
+
+        tree = ttk.Treeview(
+            table_frame,
+            columns=("Timestamp", "Event", "Target"),
+            show="headings",
+            selectmode="none"
+        )
+        tree.heading("Timestamp", text="Timestamp")
+        tree.heading("Event", text="Event Type")
+        tree.heading("Target", text="Details / Target")
+
+        tree.column("Timestamp", width=140, anchor="center")
+        tree.column("Event", width=160, anchor="w")
+        tree.column("Target", width=220, anchor="w")
+
+        scrollbar = ttk.Scrollbar(
+            table_frame, orient=tk.VERTICAL, command=tree.yview
+        )
+        tree.configure(yscroll=scrollbar.set)
+
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        text_area = tk.Text(
-            frame,
-            bg=config.FRAME_BG,
-            fg=config.TEXT_COLOR,
-            insertbackground="white",
-            font=("Courier", 9),
-            yscrollcommand=scrollbar.set,
-            wrap=tk.WORD,
+        for item in reversed(metrics["logs"]):
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    item.get("timestamp", ""),
+                    item.get("event", ""),
+                    item.get("target", "")
+                )
+            )
+
+    def _render_native_chart(self, parent_frame, metrics):
+        """Renders native dual bar/line trend chart using Tkinter Canvas."""
+        canvas = tk.Canvas(
+            parent_frame, height=180, bg=config.FRAME_BG, highlightthickness=0
         )
-        text_area.pack(fill=tk.BOTH, expand=True)
-        scrollbar.config(command=text_area.yview)
+        canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        events = EventLogger.load_events()
-        if not events:
-            text_area.insert(tk.END, "No event logs found.")
-        else:
-            for evt in reversed(events):
-                ts = evt.get("timestamp", "")[:19].replace("T", " ")
-                etype = evt.get("event_type", "EVENT")
-                title = evt.get("task_title", "")
-                prio = evt.get("priority", "")
-                prio_str = f" [{prio}]" if prio else ""
-                log_line = f"[{ts}] {etype}: {title}{prio_str}\n"
-                text_area.insert(tk.END, log_line)
+        all_dates = sorted(list(
+            set(metrics["daily_tasks"].keys()) | set(metrics["daily_focus"].keys())
+        ))
 
-        text_area.config(state=tk.DISABLED)
+        if len(all_dates) > 7:
+            all_dates = all_dates[-7:]
+
+        if not all_dates:
+            today = datetime.date.today().strftime("%Y-%m-%d")
+            all_dates = [today]
+
+        task_counts = [metrics["daily_tasks"][d] for d in all_dates]
+        focus_mins = [metrics["daily_focus"][d] for d in all_dates]
+
+        # Fix: Direct non-nested max calculation
+        max_tasks = max(*task_counts, 5)
+        max_focus = max(*focus_mins, 60)
+
+        width = 560
+        height = 140
+        margin_left = 40
+        margin_bottom = 30
+        plot_width = width - margin_left - 20
+        plot_height = height - margin_bottom
+
+        # Draw Chart Legend
+        canvas.create_rectangle(
+            margin_left, 5, margin_left + 12, 17, fill="#A6E3A1", outline=""
+        )
+        canvas.create_text(
+            margin_left + 50, 11, text="Tasks Done", fill=config.TEXT_COLOR, font=("Arial", 8)
+        )
+
+        canvas.create_line(
+            margin_left + 100, 11, margin_left + 120, 11, fill="#FAB387", width=2
+        )
+        canvas.create_text(
+            margin_left + 160, 11, text="Focus (Mins)", fill=config.TEXT_COLOR, font=("Arial", 8)
+        )
+
+        num_points = len(all_dates)
+        step = plot_width / max(num_points, 1)
+
+        line_points = []
+
+        for i, date_str in enumerate(all_dates):
+            x_center = margin_left + (i * step) + (step / 2)
+
+            # Draw Bars (Tasks Done)
+            t_val = task_counts[i]
+            bar_h = (t_val / max_tasks) * (plot_height - 20)
+            y_top = height - margin_bottom - bar_h
+
+            canvas.create_rectangle(
+                x_center - 12, y_top, x_center + 12, height - margin_bottom,
+                fill="#A6E3A1", outline=""
+            )
+
+            # Record Points for Focus Line
+            f_val = focus_mins[i]
+            line_h = (f_val / max_focus) * (plot_height - 20)
+            y_line = height - margin_bottom - line_h
+            line_points.append((x_center, y_line))
+
+            # X Axis Labels
+            short_date = date_str[-5:]
+            canvas.create_text(
+                x_center, height - 12, text=short_date,
+                fill=config.TEXT_COLOR, font=("Arial", 7)
+            )
+
+        # Draw Focus Line
+        for i in range(len(line_points) - 1):
+            pt1 = line_points[i]
+            pt2 = line_points[i + 1]
+            canvas.create_line(
+                pt1[0], pt1[1], pt2[0], pt2[1], fill="#FAB387", width=2
+            )
+
+        for pt in line_points:
+            canvas.create_oval(
+                pt[0] - 3, pt[1] - 3, pt[0] + 3, pt[1] + 3,
+                fill="#FAB387", outline=""
+            )
+
+    def _create_stat_card(self, parent, title: str, value: str, accent_color: str):
+        """Renders stylized stat card component."""
+        card = tk.Frame(parent, bg=config.FRAME_BG, bd=1, relief=tk.RAISED)
+        card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=4)
+
+        tk.Label(
+            card,
+            text=title,
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 8, "bold")
+        ).pack(pady=(8, 2))
+
+        tk.Label(
+            card,
+            text=value,
+            fg=accent_color,
+            bg=config.FRAME_BG,
+            font=("Arial", 14, "bold")
+        ).pack(pady=(0, 8))
+
+    def _export_analytics_csv(self):
+        """Dispatches non-blocking thread to export activity logs into CSV file."""
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
+        )
+        if not filepath:
+            return
+
+        logs = EventLogger.read_logs()
+
+        def write_analytics_file(log_data, path):
+            lines = ["Timestamp,Event,Target,Details\n"]
+            for log in log_data:
+                ts = log.get("timestamp", "")
+                evt = log.get("event", "")
+                target = str(log.get("target", "")).replace(",", " ")
+                details = str(log.get("details", "")).replace(",", ";")
+                lines.append(f"{ts},{evt},{target},{details}\n")
+
+            with open(path, "w", encoding="utf-8") as file:
+                file.writelines(lines)
+            return len(log_data)
+
+        def on_export_done(future):
+            try:
+                count = future.result()
+                msg = f"Successfully exported {count} analytics records to:\n{filepath}"
+                self.after(0, lambda: messagebox.showinfo("Export Success", msg))
+            except (IOError, OSError, PermissionError) as err:
+                err_msg = f"Failed to export analytics: {err}"
+                self.after(0, lambda: messagebox.showerror("Export Error", err_msg))
+
+        future = THREAD_EXECUTOR.submit(write_analytics_file, logs, filepath)
+        future.add_done_callback(on_export_done)

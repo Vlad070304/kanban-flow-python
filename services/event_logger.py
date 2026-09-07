@@ -1,48 +1,46 @@
 """
 services/event_logger.py
-Append-only JSON logger for tracking board lifecycle events and completion history.
+Service for appending and reading JSON event logs.
 """
 
-from datetime import datetime
+import datetime
 import json
 import os
+from typing import Any, Dict, List
 
 
 class EventLogger:
-    """Handles persistent event logging for historical board operations."""
+    """Handles structured application event logging."""
 
-    LOG_FILE = "kanban_events.json"
+    LOG_FILE = "event_log.json"
 
     @classmethod
-    def log_event(cls, event_type: str, task_title: str, extra_data: dict = None):
-        """Appends a new event record to the log file."""
-        events = cls.load_events()
-
-        payload = {
-            "timestamp": datetime.now().isoformat(),
-            "event_type": event_type,
-            "task_title": task_title,
+    def log_event(cls, event_type: str, target: str, details: Dict[str, Any]):
+        """Appends a timestamped event entry to the log file."""
+        entry = {
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "event": event_type,
+            "target": target,
+            "details": details
         }
-        if extra_data:
-            payload.update(extra_data)
 
-        events.append(payload)
+        logs = cls.read_logs()
+        logs.append(entry)
 
         try:
             with open(cls.LOG_FILE, "w", encoding="utf-8") as file:
-                json.dump(events, file, indent=4)
-        except IOError as err:
-            print(f"Error writing event log: {err}")
+                json.dump(logs, file, indent=4)
+        except (IOError, TypeError) as err:
+            print(f"Error saving log event: {err}")
 
     @classmethod
-    def load_events(cls) -> list:
-        """Reads historical log events from disk."""
+    def read_logs(cls) -> List[Dict[str, Any]]:
+        """Reads and returns all logged events."""
         if not os.path.exists(cls.LOG_FILE):
             return []
 
         try:
             with open(cls.LOG_FILE, "r", encoding="utf-8") as file:
                 return json.load(file)
-        except (IOError, json.JSONDecodeError) as err:
-            print(f"Error reading event log: {err}")
+        except (IOError, json.JSONDecodeError):
             return []
