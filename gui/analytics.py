@@ -4,7 +4,6 @@ Analytics dashboard window displaying completed tasks, productivity statistics,
 total focus time, native visual charts, and activity history export.
 """
 
-from collections import defaultdict
 import concurrent.futures
 import datetime
 import tkinter as tk
@@ -32,54 +31,10 @@ class AnalyticsWindow(tk.Toplevel):
 
         self._build_ui()
 
-    def _calculate_metrics(self):
-        """Processes event log file to calculate task, focus metrics, and daily trends."""
-        logs = EventLogger.read_logs()
-
-        completed_tasks = [
-            log for log in logs if log.get("event") == "TASK_COMPLETED"
-        ]
-        completed_count = len(completed_tasks)
-
-        focus_sessions = [
-            log for log in logs if log.get("event") == "FOCUS_SESSION_COMPLETED"
-        ]
-        focus_session_count = len(focus_sessions)
-
-        total_focus_minutes = 0
-        for session in focus_sessions:
-            details = session.get("details", {})
-            total_focus_minutes += details.get("duration_min", 0)
-
-        daily_tasks = defaultdict(int)
-        daily_focus = defaultdict(int)
-
-        for log in logs:
-            ts_str = log.get("timestamp", "")
-            if not ts_str:
-                continue
-            date_key = ts_str.split(" ")[0]
-
-            if log.get("event") == "TASK_COMPLETED":
-                daily_tasks[date_key] += 1
-            elif log.get("event") == "FOCUS_SESSION_COMPLETED":
-                dur = log.get("details", {}).get("duration_min", 0)
-                daily_focus[date_key] += dur
-
-        return {
-            "completed_count": completed_count,
-            "focus_session_count": focus_session_count,
-            "total_focus_minutes": total_focus_minutes,
-            "daily_tasks": daily_tasks,
-            "daily_focus": daily_focus,
-            "logs": logs
-        }
-
     def _build_ui(self):
-        """Constructs metric summary cards, native chart, and log export controls."""
-        metrics = self._calculate_metrics()
+        # Constructs metric summary cards, native chart, and log export controls.
+        metrics = EventLogger.get_analytics_summary()
 
-        # Header Title
         header_frame = tk.Frame(self, bg=config.BG_COLOR)
         header_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
 
@@ -103,7 +58,6 @@ class AnalyticsWindow(tk.Toplevel):
         )
         btn_export.pack(side=tk.RIGHT)
 
-        # Metrics Cards Container
         cards_frame = tk.Frame(self, bg=config.BG_COLOR)
         cards_frame.pack(fill=tk.X, padx=15, pady=10)
 
@@ -130,13 +84,11 @@ class AnalyticsWindow(tk.Toplevel):
             accent_color="#89B4FA"
         )
 
-        # Chart Section (Native Tkinter Canvas)
         chart_frame = tk.Frame(self, bg=config.FRAME_BG)
         chart_frame.pack(fill=tk.X, padx=15, pady=10)
 
         self._render_native_chart(chart_frame, metrics)
 
-        # Recent Activity History Header
         tk.Label(
             self,
             text="Recent Activity History",
@@ -145,7 +97,6 @@ class AnalyticsWindow(tk.Toplevel):
             font=("Arial", 10, "bold")
         ).pack(anchor="w", padx=15, pady=(10, 5))
 
-        # Log Table Container
         table_frame = tk.Frame(self, bg=config.FRAME_BG)
         table_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
 
@@ -200,7 +151,7 @@ class AnalyticsWindow(tk.Toplevel):
             )
 
     def _render_native_chart(self, parent_frame, metrics):
-        """Renders native dual bar/line trend chart using Tkinter Canvas."""
+        # Renders native dual bar/line trend chart using Tkinter Canvas.
         canvas = tk.Canvas(
             parent_frame, height=180, bg=config.FRAME_BG, highlightthickness=0
         )
@@ -220,7 +171,6 @@ class AnalyticsWindow(tk.Toplevel):
         task_counts = [metrics["daily_tasks"][d] for d in all_dates]
         focus_mins = [metrics["daily_focus"][d] for d in all_dates]
 
-        # Fix: Direct non-nested max calculation
         max_tasks = max(*task_counts, 5)
         max_focus = max(*focus_mins, 60)
 
@@ -231,7 +181,6 @@ class AnalyticsWindow(tk.Toplevel):
         plot_width = width - margin_left - 20
         plot_height = height - margin_bottom
 
-        # Draw Chart Legend
         canvas.create_rectangle(
             margin_left, 5, margin_left + 12, 17, fill="#A6E3A1", outline=""
         )
@@ -254,7 +203,6 @@ class AnalyticsWindow(tk.Toplevel):
         for i, date_str in enumerate(all_dates):
             x_center = margin_left + (i * step) + (step / 2)
 
-            # Draw Bars (Tasks Done)
             t_val = task_counts[i]
             bar_h = (t_val / max_tasks) * (plot_height - 20)
             y_top = height - margin_bottom - bar_h
@@ -264,20 +212,17 @@ class AnalyticsWindow(tk.Toplevel):
                 fill="#A6E3A1", outline=""
             )
 
-            # Record Points for Focus Line
             f_val = focus_mins[i]
             line_h = (f_val / max_focus) * (plot_height - 20)
             y_line = height - margin_bottom - line_h
             line_points.append((x_center, y_line))
 
-            # X Axis Labels
             short_date = date_str[-5:]
             canvas.create_text(
                 x_center, height - 12, text=short_date,
                 fill=config.TEXT_COLOR, font=("Arial", 7)
             )
 
-        # Draw Focus Line
         for i in range(len(line_points) - 1):
             pt1 = line_points[i]
             pt2 = line_points[i + 1]
@@ -292,7 +237,7 @@ class AnalyticsWindow(tk.Toplevel):
             )
 
     def _create_stat_card(self, parent, title: str, value: str, accent_color: str):
-        """Renders stylized stat card component."""
+        # Renders stylized stat card component.
         card = tk.Frame(parent, bg=config.FRAME_BG, bd=1, relief=tk.RAISED)
         card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=4)
 
@@ -313,7 +258,7 @@ class AnalyticsWindow(tk.Toplevel):
         ).pack(pady=(0, 8))
 
     def _export_analytics_csv(self):
-        """Dispatches non-blocking thread to export activity logs into CSV file."""
+        # Dispatches non-blocking thread to export activity logs into CSV file.
         filepath = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]

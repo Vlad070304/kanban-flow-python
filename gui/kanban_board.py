@@ -1,13 +1,11 @@
 """
 gui/kanban_board.py
-Kanban board component handling task rendering, JSON persistence,
+Kanban board component handling task rendering, TaskManager integration,
 card editing dialogs, asynchronous focus timers, background thread exports,
 and event logging.
 """
 
 import concurrent.futures
-import json
-import os
 import threading
 import time
 import tkinter as tk
@@ -16,6 +14,7 @@ from tkinter import filedialog, messagebox
 import config
 from gui.analytics import AnalyticsWindow
 from services.event_logger import EventLogger
+from services.task_manager import TaskManager
 
 # Thread pool executor for background I/O operations
 THREAD_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2)
@@ -25,6 +24,7 @@ class FocusTimerDialog(tk.Toplevel):
     """Modal dialog providing Pomodoro presets and custom focus session controls."""
 
     def __init__(self, parent, board_ref):
+        """Initializes dialog components and sets up modal focus."""
         super().__init__(parent)
         self.board = board_ref
 
@@ -55,7 +55,6 @@ class FocusTimerDialog(tk.Toplevel):
             font=("Arial", 9)
         ).pack(pady=(0, 10))
 
-        # Preset Buttons Frame
         preset_frame = tk.Frame(self, bg=config.FRAME_BG)
         preset_frame.pack(fill=tk.X, padx=20, pady=5)
 
@@ -80,7 +79,6 @@ class FocusTimerDialog(tk.Toplevel):
         )
         btn_5.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
 
-        # Custom Entry Frame
         custom_frame = tk.Frame(self, bg=config.FRAME_BG)
         custom_frame.pack(fill=tk.X, padx=20, pady=12)
 
@@ -103,7 +101,6 @@ class FocusTimerDialog(tk.Toplevel):
         )
         btn_custom.pack(side=tk.LEFT, padx=5)
 
-        # Stop Active Session Button
         if getattr(self.board, "_timer_running", False):
             btn_stop = tk.Button(
                 self, text="Stop Current Session", bg="#F38BA8", fg="#11111B",
@@ -139,14 +136,16 @@ class KanbanBoard(tk.Frame):
     DATA_FILE = "kanban_data.json"
 
     def __init__(self, parent):
+        """Initializes board layout, state, and loads stored task data."""
         super().__init__(parent, bg=config.BG_COLOR)
         self.parent = parent
         self.columns = ["To Do", "In Progress", "Done"]
         self.column_frames = {}
 
+        self.task_manager = TaskManager(self.DATA_FILE)
+
         self.total_cards = 0
         self.done_cards = 0
-
         self._timer_running = False
 
         self._setup_canvas_metric()
@@ -176,16 +175,8 @@ class KanbanBoard(tk.Frame):
         if self._timer_running:
             return
 
-        total = 0
-        done = 0
-        for col_name, frame in self.column_frames.items():
-            count = len(frame.winfo_children())
-            total += count
-            if col_name == "Done":
-                done += count
-
-        self.total_cards = total
-        self.done_cards = done
+        self.total_cards = len(self.task_manager.tasks)
+        self.done_cards = len([t for t in self.task_manager.tasks if t.status == "Done"])
 
         self.canvas.delete("all")
         width = self.canvas.winfo_width() or 880
@@ -377,16 +368,7 @@ class KanbanBoard(tk.Frame):
         if not filepath:
             return
 
-        snapshot = []
-        for col_name, frame in self.column_frames.items():
-            for card in frame.winfo_children():
-                labels = card.winfo_children()
-                if len(labels) >= 2:
-                    snapshot.append((
-                        labels[0].cget("text"),
-                        col_name,
-                        "HIGH" if "HIGH" in labels[1].cget("text") else "LOW"
-                    ))
+        snapshot = [(t.title, t.status, t.priority) for t in self.task_manager.tasks]
 
         def write_file_task(data, path):
             lines = ["Title,Status,Priority\n"]
@@ -420,43 +402,13 @@ class KanbanBoard(tk.Frame):
         self.parent.bind("<Control-n>", lambda e: self.entry_title.focus_set())
         self.parent.bind("<Escape>", lambda e: self.entry_title.delete(0, tk.END))
 
-    def save_board_data(self):
-        """Serializes board state into local JSON file."""
-        data = []
-        for col_name, frame in self.column_frames.items():
-            for card in frame.winfo_children():
-                labels = card.winfo_children()
-                if len(labels) >= 2:
-                    data.append({
-                        "title": labels[0].cget("text"),
-                        "status": col_name,
-                        "priority": "HIGH" if "HIGH" in labels[1].cget("text") else "LOW"
-                    })
-        try:
-            with open(self.DATA_FILE, "w", encoding="utf-8") as file:
-                json.dump(data, file, indent=4)
-        except (IOError, TypeError) as err:
-            print(f"Error saving data: {err}")
-
     def load_board_data(self):
-        """Populates board components from saved JSON file."""
-        if not os.path.exists(self.DATA_FILE):
-            return
-
-        try:
-            with open(self.DATA_FILE, "r", encoding="utf-8") as file:
-                data = json.load(file)
-
-            for item in data:
-                title = item.get("title", "")
-                status = item.get("status", "To Do")
-                priority = item.get("priority", "LOW")
-                if title and status in self.column_frames:
-                    self._create_card_widget(title, priority, status)
-
-            self.update_progress_bar()
-        except (IOError, json.JSONDecodeError) as err:
-            print(f"Error loading data: {err}")
+        """Populates board components from TaskManager state."""
+        tasks = self.task_manager.load_from_file()
+        for task in tasks:
+            if task.status in self.column_frames:
+                self._create_card_widget(task.task_id, task.title, task.priority, task.status)
+        self.update_progress_bar()
 
     def _open_edit_dialog(self, card, title: str, priority_text: str):
         """Opens top-level modal dialog to modify card title and priority."""
@@ -496,10 +448,18 @@ class KanbanBoard(tk.Frame):
             new_title = entry.get().strip()
             if new_title:
                 new_prio = "HIGH" if prio_var.get() == 2 else "LOW"
+
+                for t in self.task_manager.tasks:
+                    if t.task_id == card.task_id:
+                        t.title = new_title
+                        t.priority = new_prio
+                        break
+
                 col_name = card.column_name
+                card_id = card.task_id
                 card.destroy()
-                self._create_card_widget(new_title, new_prio, col_name)
-                self.save_board_data()
+                self._create_card_widget(card_id, new_title, new_prio, col_name)
+                self.task_manager.save_to_file()
                 dialog.destroy()
 
         tk.Button(
@@ -508,7 +468,7 @@ class KanbanBoard(tk.Frame):
             command=save_changes
         ).pack(pady=10)
 
-    def _create_card_widget(self, title: str, priority_text: str, column_name: str):
+    def _create_card_widget(self, task_id: str, title: str, priority_text: str, column_name: str):
         """Creates card frame element in designated column with click handlers."""
         priority_color = (
             config.ACCENT_COLOR if priority_text == "HIGH" else config.TEXT_COLOR
@@ -520,6 +480,7 @@ class KanbanBoard(tk.Frame):
         )
         card.pack(fill=tk.X, padx=8, pady=5)
         card.column_name = column_name
+        card.task_id = task_id
 
         lbl_title = tk.Label(
             card, text=title, fg=config.TEXT_COLOR, bg=config.CARD_BG,
@@ -561,16 +522,18 @@ class KanbanBoard(tk.Frame):
             )
 
     def clear_done_tasks(self):
-        """Removes all tasks in the 'Done' column and saves changes."""
+        """Removes all tasks in the 'Done' column via TaskManager and updates UI."""
+        self.task_manager.clear_done()
+        self.task_manager.save_to_file()
+
         done_frame = self.column_frames["Done"]
         for card in done_frame.winfo_children():
             card.destroy()
 
         self.update_progress_bar()
-        self.save_board_data()
 
     def add_task_card(self):
-        """Validates entry, renders task card, persists data, and logs creation event."""
+        """Validates entry, persists data via TaskManager, renders card, and logs event."""
         title = self.entry_title.get().strip()
 
         if not title:
@@ -579,18 +542,21 @@ class KanbanBoard(tk.Frame):
 
         priority_text = "HIGH" if self.priority_var.get() == 2 else "LOW"
 
-        self._create_card_widget(title, priority_text, "To Do")
+        new_task = self.task_manager.add_task(title, priority_text, "To Do")
+        self.task_manager.save_to_file()
+
+        self._create_card_widget(new_task.task_id, title, priority_text, "To Do")
         self.update_progress_bar()
-        self.save_board_data()
 
         EventLogger.log_event("TASK_CREATED", title, {"priority": priority_text})
         self.entry_title.delete(0, tk.END)
 
     def _advance_card_status(self, card):
-        """Advances task card column or removes it, updating state and event log."""
+        """Advances task card column or removes it, updating state via TaskManager."""
         title = card.winfo_children()[0].cget("text")
         priority_info = card.winfo_children()[1].cget("text")
         is_high = "HIGH" in priority_info
+        priority_text = "HIGH" if is_high else "LOW"
 
         current_col = card.column_name
         next_col = None
@@ -600,20 +566,29 @@ class KanbanBoard(tk.Frame):
         elif current_col == "In Progress":
             next_col = "Done"
         elif current_col == "Done":
+            self.task_manager.remove_task(card.task_id)
+            self.task_manager.save_to_file()
             card.destroy()
             self.update_progress_bar()
-            self.save_board_data()
             return
 
         if not next_col:
             return
 
+        for t in self.task_manager.tasks:
+            if t.task_id == card.task_id:
+                t.status = next_col
+                if next_col == "Done":
+                    t.mark_completed()
+                break
+
+        self.task_manager.save_to_file()
+
+        task_id = card.task_id
         card.destroy()
 
-        priority_text = "HIGH" if is_high else "LOW"
-        self._create_card_widget(title, priority_text, next_col)
+        self._create_card_widget(task_id, title, priority_text, next_col)
         self.update_progress_bar()
-        self.save_board_data()
 
         if next_col == "Done":
             EventLogger.log_event("TASK_COMPLETED", title, {"priority": priority_text})
