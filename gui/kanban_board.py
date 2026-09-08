@@ -2,10 +2,11 @@
 gui/kanban_board.py
 Kanban board component handling task rendering, TaskManager integration,
 card editing dialogs, asynchronous focus timers, background thread exports,
-and event logging with robust error handling and logging.
+and event logging with due dates and tags support.
 """
 
 import concurrent.futures
+import datetime
 import logging
 import threading
 import time
@@ -257,61 +258,91 @@ class KanbanBoard(tk.Frame):
             self.column_frames[col_name] = col_frame
 
     def _setup_input_panel(self) -> None:
-        """Renders input controls panel at the bottom."""
+        """Renders input controls panel at the bottom with due date and tag support."""
         panel: tk.Frame = tk.Frame(self, bg=config.FRAME_BG, pady=10, padx=10)
         panel.pack(fill=tk.X, side=tk.BOTTOM)
 
+        row1: tk.Frame = tk.Frame(panel, bg=config.FRAME_BG)
+        row1.pack(fill=tk.X, pady=2)
+
         tk.Label(
-            panel, text="Task Title:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
+            row1, text="Title:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
             font=("Arial", 9, "bold")
-        ).pack(side=tk.LEFT, padx=(0, 5))
+        ).pack(side=tk.LEFT, padx=(0, 2))
 
         self.entry_title: tk.Entry = tk.Entry(
-            panel, width=18, bg="#313244", fg=config.TEXT_COLOR,
+            row1, width=15, bg="#313244", fg=config.TEXT_COLOR,
             insertbackground="white"
         )
         self.entry_title.pack(side=tk.LEFT, padx=5)
 
         tk.Label(
-            panel, text="Priority:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
+            row1, text="Due (YYYY-MM-DD):", fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+        ).pack(side=tk.LEFT, padx=(5, 2))
+
+        self.entry_due: tk.Entry = tk.Entry(
+            row1, width=11, bg="#313244", fg=config.TEXT_COLOR,
+            insertbackground="white"
+        )
+        self.entry_due.insert(0, datetime.date.today().strftime("%Y-%m-%d"))
+        self.entry_due.pack(side=tk.LEFT, padx=5)
+
+        tk.Label(
+            row1, text="Tags:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
             font=("Arial", 9, "bold")
-        ).pack(side=tk.LEFT, padx=(5, 5))
+        ).pack(side=tk.LEFT, padx=(5, 2))
+
+        self.entry_tags: tk.Entry = tk.Entry(
+            row1, width=12, bg="#313244", fg=config.TEXT_COLOR,
+            insertbackground="white"
+        )
+        self.entry_tags.insert(0, "Feature")
+        self.entry_tags.pack(side=tk.LEFT, padx=5)
+
+        tk.Label(
+            row1, text="Priority:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
+            font=("Arial", 9, "bold")
+        ).pack(side=tk.LEFT, padx=(5, 2))
 
         self.priority_var: tk.IntVar = tk.IntVar(value=1)
         tk.Radiobutton(
-            panel, text="Low", variable=self.priority_var, value=1,
+            row1, text="Low", variable=self.priority_var, value=1,
             bg=config.FRAME_BG, fg=config.TEXT_COLOR, selectcolor=config.BG_COLOR
         ).pack(side=tk.LEFT)
 
         tk.Radiobutton(
-            panel, text="High", variable=self.priority_var, value=2,
+            row1, text="High", variable=self.priority_var, value=2,
             bg=config.FRAME_BG, fg=config.ACCENT_COLOR,
             selectcolor=config.BG_COLOR
         ).pack(side=tk.LEFT)
 
+        row2: tk.Frame = tk.Frame(panel, bg=config.FRAME_BG)
+        row2.pack(fill=tk.X, pady=(6, 2))
+
         btn_add: tk.Button = tk.Button(
-            panel, text="+ Add Card", bg=config.ACCENT_COLOR, fg="#11111B",
+            row2, text="+ Add Card", bg=config.ACCENT_COLOR, fg="#11111B",
             font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
             command=self.add_task_card
         )
-        btn_add.pack(side=tk.LEFT, padx=5)
+        btn_add.pack(side=tk.LEFT, padx=2)
 
         btn_timer: tk.Button = tk.Button(
-            panel, text="Focus Timer", bg="#FAB387", fg="#11111B",
+            row2, text="Focus Timer", bg="#FAB387", fg="#11111B",
             font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
             command=self.open_timer_dialog
         )
         btn_timer.pack(side=tk.LEFT, padx=5)
 
         btn_analytics: tk.Button = tk.Button(
-            panel, text="Analytics", bg="#89B4FA", fg="#11111B",
+            row2, text="Analytics", bg="#89B4FA", fg="#11111B",
             font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
             command=lambda: AnalyticsWindow(self.parent, self)
         )
         btn_analytics.pack(side=tk.LEFT, padx=5)
 
         btn_clear_done: tk.Button = tk.Button(
-            panel, text="Clear Done", bg="#F38BA8", fg="#11111B",
+            row2, text="Clear Done", bg="#F38BA8", fg="#11111B",
             font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
             command=self.clear_done_tasks
         )
@@ -420,17 +451,21 @@ class KanbanBoard(tk.Frame):
         if not filepath:
             return
 
-        snapshot: List[Tuple[str, str, str]] = [
-            (t.title, t.status, t.priority) for t in self.task_manager.tasks
+        snapshot: List[Tuple[str, str, str, str, str]] = [
+            (t.title, t.status, t.priority, t.due_date, ", ".join(t.tags))
+            for t in self.task_manager.tasks
         ]
 
         def write_file_task(
-            data: List[Tuple[str, str, str]], path: str
+            data: List[Tuple[str, str, str, str, str]], path: str
         ) -> int:
-            lines: List[str] = ["Title,Status,Priority\n"]
-            for title, status, priority in data:
+            lines: List[str] = ["Title,Status,Priority,DueDate,Tags\n"]
+            for title, status, priority, due_date, tags in data:
                 clean_title: str = title.replace(",", " ")
-                lines.append(f"{clean_title},{status},{priority}\n")
+                clean_tags: str = tags.replace(",", ";")
+                lines.append(
+                    f"{clean_title},{status},{priority},{due_date},{clean_tags}\n"
+                )
 
             with open(path, "w", encoding="utf-8") as file:
                 file.writelines(lines)
@@ -476,7 +511,8 @@ class KanbanBoard(tk.Frame):
             for task in tasks:
                 if task.status in self.column_frames:
                     self._create_card_widget(
-                        task.task_id, task.title, task.priority, task.status
+                        task.task_id, task.title, task.priority,
+                        task.status, task.due_date, task.tags
                     )
         except (IOError, OSError, PermissionError) as err:
             LOGGER.error("Failed to load task data from file: %s", err)
@@ -486,12 +522,17 @@ class KanbanBoard(tk.Frame):
         self.update_progress_bar()
 
     def _open_edit_dialog(
-        self, card: tk.Widget, title: str, priority_text: str
+        self,
+        card: tk.Widget,
+        title: str,
+        priority_text: str,
+        due_date: str,
+        tags: List[str]
     ) -> None:
-        """Opens top-level modal dialog to modify card title and priority."""
+        """Opens top-level modal dialog to modify card attributes."""
         dialog: tk.Toplevel = tk.Toplevel(self)
         dialog.title("Edit Task")
-        dialog.geometry("320x170")
+        dialog.geometry("320x260")
         dialog.configure(bg=config.FRAME_BG)
         dialog.transient(self)
         dialog.grab_set()
@@ -508,26 +549,55 @@ class KanbanBoard(tk.Frame):
         entry.insert(0, title)
         entry.pack(fill=tk.X, padx=15, pady=2)
 
+        tk.Label(
+            dialog, text="Due Date (YYYY-MM-DD):", fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+        ).pack(anchor="w", padx=15, pady=(8, 2))
+
+        entry_due: tk.Entry = tk.Entry(
+            dialog, bg="#313244", fg=config.TEXT_COLOR,
+            insertbackground="white"
+        )
+        entry_due.insert(0, due_date)
+        entry_due.pack(fill=tk.X, padx=15, pady=2)
+
+        tk.Label(
+            dialog, text="Tags (comma-separated):", fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+        ).pack(anchor="w", padx=15, pady=(8, 2))
+
+        entry_tags: tk.Entry = tk.Entry(
+            dialog, bg="#313244", fg=config.TEXT_COLOR,
+            insertbackground="white"
+        )
+        entry_tags.insert(0, ", ".join(tags))
+        entry_tags.pack(fill=tk.X, padx=15, pady=2)
+
         prio_var: tk.IntVar = tk.IntVar(
             value=2 if priority_text == "HIGH" else 1
         )
         prio_frame: tk.Frame = tk.Frame(dialog, bg=config.FRAME_BG)
-        prio_frame.pack(fill=tk.X, padx=15, pady=5)
+        prio_frame.pack(fill=tk.X, padx=15, pady=8)
 
         tk.Radiobutton(
-            prio_frame, text="Low Priority", variable=prio_var, value=1,
+            prio_frame, text="Low", variable=prio_var, value=1,
             bg=config.FRAME_BG, fg=config.TEXT_COLOR,
             selectcolor=config.BG_COLOR
         ).pack(side=tk.LEFT)
 
         tk.Radiobutton(
-            prio_frame, text="High Priority", variable=prio_var, value=2,
+            prio_frame, text="High", variable=prio_var, value=2,
             bg=config.FRAME_BG, fg=config.ACCENT_COLOR,
             selectcolor=config.BG_COLOR
         ).pack(side=tk.LEFT)
 
         def save_changes() -> None:
             new_title: str = entry.get().strip()
+            new_due: str = entry_due.get().strip()
+            new_tags: List[str] = [
+                t.strip() for t in entry_tags.get().split(",") if t.strip()
+            ]
+
             if new_title:
                 new_prio: str = "HIGH" if prio_var.get() == 2 else "LOW"
 
@@ -535,13 +605,15 @@ class KanbanBoard(tk.Frame):
                     if t.task_id == card.task_id:
                         t.title = new_title
                         t.priority = new_prio
+                        t.due_date = new_due
+                        t.tags = new_tags
                         break
 
                 col_name: str = card.column_name
                 card_id: str = card.task_id
                 card.destroy()
                 self._create_card_widget(
-                    card_id, new_title, new_prio, col_name
+                    card_id, new_title, new_prio, col_name, new_due, new_tags
                 )
                 if self._safe_save():
                     dialog.destroy()
@@ -557,13 +629,12 @@ class KanbanBoard(tk.Frame):
         task_id: str,
         title: str,
         priority_text: str,
-        column_name: str
+        column_name: str,
+        due_date: str = "",
+        tags: Optional[List[str]] = None
     ) -> None:
-        """Creates card frame element in designated column with clicks."""
-        priority_color: str = (
-            config.ACCENT_COLOR if priority_text == "HIGH"
-            else config.TEXT_COLOR
-        )
+        """Creates card frame element displaying title, priority, due date, and tags."""
+        tags = tags if tags is not None else []
 
         card: tk.Frame = tk.Frame(
             self.column_frames[column_name], bg=config.CARD_BG, bd=1,
@@ -577,14 +648,39 @@ class KanbanBoard(tk.Frame):
             card, text=title, fg=config.TEXT_COLOR, bg=config.CARD_BG,
             font=("Arial", 10, "bold"), anchor="w"
         )
-        lbl_title.pack(fill=tk.X, padx=8, pady=(6, 2))
+        lbl_title.pack(fill=tk.X, padx=8, pady=(6, 1))
 
-        lbl_priority: tk.Label = tk.Label(
-            card, text=f"Priority: {priority_text} | Click to Move ->",
-            fg=priority_color, bg=config.CARD_BG,
+        due_color: str = config.TEXT_COLOR
+        if due_date and column_name != "Done":
+            try:
+                d_date = datetime.datetime.strptime(due_date, "%Y-%m-%d").date()
+                today = datetime.date.today()
+                if d_date < today:
+                    due_color = "#F38BA8"
+                elif d_date == today:
+                    due_color = "#FAB387"
+            except ValueError:
+                pass
+
+        meta_text: str = f"Prio: {priority_text}"
+        if due_date:
+            meta_text += f" | Due: {due_date}"
+        if tags:
+            meta_text += f" | Tags: {', '.join(tags)}"
+
+        lbl_meta: tk.Label = tk.Label(
+            card, text=meta_text,
+            fg=due_color, bg=config.CARD_BG,
             font=("Arial", 8, "italic"), anchor="w"
         )
-        lbl_priority.pack(fill=tk.X, padx=8, pady=(0, 6))
+        lbl_meta.pack(fill=tk.X, padx=8, pady=(0, 2))
+
+        lbl_action: tk.Label = tk.Label(
+            card, text="Click to Move ->",
+            fg=config.TEXT_COLOR, bg=config.CARD_BG,
+            font=("Arial", 7, "italic"), anchor="w"
+        )
+        lbl_action.pack(fill=tk.X, padx=8, pady=(0, 6))
 
         card.click_after_id = None
 
@@ -602,22 +698,26 @@ class KanbanBoard(tk.Frame):
             _event: tk.Event,
             target_card: tk.Widget,
             t_title: str,
-            t_priority: str
+            t_priority: str,
+            t_due: str,
+            t_tags: List[str]
         ) -> None:
             if target_card.click_after_id is not None:
                 self.after_cancel(target_card.click_after_id)
                 target_card.click_after_id = None
 
-            self._open_edit_dialog(target_card, t_title, t_priority)
+            self._open_edit_dialog(
+                target_card, t_title, t_priority, t_due, t_tags
+            )
 
-        for widget in (card, lbl_title, lbl_priority):
+        for widget in (card, lbl_title, lbl_meta, lbl_action):
             widget.bind(
                 "<Button-1>", lambda e, c=card: handle_single_click(e, c)
             )
             widget.bind(
                 "<Double-Button-1>",
-                lambda e, c=card, t=title, p=priority_text: (
-                    handle_double_click(e, c, t, p)
+                lambda e, c=card, t=title, p=priority_text, d=due_date, tg=tags: (
+                    handle_double_click(e, c, t, p, d, tg)
                 )
             )
 
@@ -634,8 +734,11 @@ class KanbanBoard(tk.Frame):
         self.update_progress_bar()
 
     def add_task_card(self) -> None:
-        """Validates entry, persists data, renders card, and logs event."""
+        """Validates entry, parses due dates/tags, persists data, and renders card."""
         title: str = self.entry_title.get().strip()
+        due_date: str = self.entry_due.get().strip()
+        tags_raw: str = self.entry_tags.get().strip()
+        tags: List[str] = [t.strip() for t in tags_raw.split(",") if t.strip()]
 
         if not title:
             messagebox.showwarning(
@@ -647,26 +750,41 @@ class KanbanBoard(tk.Frame):
             "HIGH" if self.priority_var.get() == 2 else "LOW"
         )
 
-        new_task = self.task_manager.add_task(title, priority_text, "To Do")
+        new_task = self.task_manager.add_task(
+            title=title,
+            priority=priority_text,
+            status="To Do",
+            due_date=due_date,
+            tags=tags
+        )
         if not self._safe_save():
             return
 
         self._create_card_widget(
-            new_task.task_id, title, priority_text, "To Do"
+            new_task.task_id, title, priority_text, "To Do", due_date, tags
         )
         self.update_progress_bar()
 
         EventLogger.log_event(
-            "TASK_CREATED", title, {"priority": priority_text}
+            "TASK_CREATED", title,
+            {"priority": priority_text, "due_date": due_date}
         )
         self.entry_title.delete(0, tk.END)
 
     def _advance_card_status(self, card: tk.Widget) -> None:
         """Advances task card column or removes it, updating state."""
         title: str = card.winfo_children()[0].cget("text")
-        priority_info: str = card.winfo_children()[1].cget("text")
-        is_high: bool = "HIGH" in priority_info
+        meta_text: str = card.winfo_children()[1].cget("text")
+
+        is_high: bool = "HIGH" in meta_text
         priority_text: str = "HIGH" if is_high else "LOW"
+
+        matching_task = next(
+            (t for t in self.task_manager.tasks if t.task_id == card.task_id),
+            None
+        )
+        due_date: str = matching_task.due_date if matching_task else ""
+        tags: List[str] = matching_task.tags if matching_task else []
 
         current_col: str = card.column_name
         next_col: Optional[str] = None
@@ -699,7 +817,9 @@ class KanbanBoard(tk.Frame):
         task_id: str = card.task_id
         card.destroy()
 
-        self._create_card_widget(task_id, title, priority_text, next_col)
+        self._create_card_widget(
+            task_id, title, priority_text, next_col, due_date, tags
+        )
         self.update_progress_bar()
 
         if next_col == "Done":

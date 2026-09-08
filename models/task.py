@@ -1,52 +1,60 @@
 """
 models/task.py
-Task data model representation with timestamps for metrics tracking.
+Defines the core Task data model supporting unique IDs, priority levels,
+status columns, optional due dates, and descriptive tags.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime
-import uuid
+import datetime
+from typing import Any, Dict, List, Optional
 
 
-@dataclass
 class Task:
-    """Represents a single task record with analytical lifecycle metrics."""
+    """Represents an individual Kanban task item."""
 
-    title: str
-    priority: str = "LOW"
-    status: str = "To Do"
-    task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    created_at: str = field(
-        default_factory=lambda: datetime.now().isoformat()
-    )
-    completed_at: str = ""
+    def __init__(
+        self,
+        task_id: str,
+        title: str,
+        priority: str = "LOW",
+        status: str = "To Do",
+        due_date: str = "",
+        tags: Optional[List[str]] = None,
+        completed_at: Optional[str] = None
+    ) -> None:
+        """Initializes a Task instance with attributes and metadata."""
+        self.task_id: str = task_id
+        self.title: str = title
+        self.priority: str = priority
+        self.status: str = status
+        self.due_date: str = due_date
+        self.tags: List[str] = tags if tags is not None else []
+        self.completed_at: Optional[str] = completed_at
 
-    def mark_completed(self):
-        """Sets task status to Done and logs completion timestamp."""
-        self.status = "Done"
-        self.completed_at = datetime.now().isoformat()
+    def mark_completed(self) -> None:
+        """Marks the task as completed."""
+        self.completed_at = datetime.datetime.now().isoformat()
 
-    def to_dict(self) -> dict:
-        """Serializes Task instance including analytical properties."""
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes task attributes into a dictionary for JSON storage."""
         return {
             "task_id": self.task_id,
             "title": self.title,
             "priority": self.priority,
             "status": self.status,
-            "created_at": self.created_at,
-            "completed_at": self.completed_at,
+            "due_date": self.due_date,
+            "tags": self.tags,
+            "completed_at": self.completed_at
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Task":
-        """Instantiates Task object from dictionary key-value data."""
+    def from_dict(cls, data: Dict[str, Any]) -> "Task":
+        """Creates a Task from a dictionary, ensuring backward compatibility for legacy records."""
         return cls(
+            task_id=data.get("task_id", ""),
             title=data.get("title", ""),
             priority=data.get("priority", "LOW"),
             status=data.get("status", "To Do"),
-            task_id=data.get("task_id", str(uuid.uuid4())),
-            created_at=data.get(
-                "created_at", datetime.now().isoformat()
-            ),
-            completed_at=data.get("completed_at", ""),
+            due_date=data.get("due_date", ""),
+            tags=data.get("tags", []),
+            completed_at=data.get("completed_at", None)
         )
