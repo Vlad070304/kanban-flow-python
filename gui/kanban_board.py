@@ -2,10 +2,11 @@
 gui/kanban_board.py
 Kanban board component handling task rendering, TaskManager integration,
 card editing dialogs, asynchronous focus timers, background thread exports,
-and event logging.
+and event logging with robust error handling and logging.
 """
 
 import concurrent.futures
+import logging
 import threading
 import time
 import tkinter as tk
@@ -16,6 +17,14 @@ import config
 from gui.analytics import AnalyticsWindow
 from services.event_logger import EventLogger
 from services.task_manager import TaskManager
+
+# Configure built-in logging module to track background and I/O failures silently
+logging.basicConfig(
+    filename="app_error.log",
+    level=logging.ERROR,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+LOGGER: logging.Logger = logging.getLogger(__name__)
 
 # Thread pool executor for background I/O operations
 THREAD_EXECUTOR: concurrent.futures.ThreadPoolExecutor = (
@@ -157,6 +166,19 @@ class KanbanBoard(tk.Frame):
         self._bind_keyboard_events()
 
         self.load_board_data()
+
+    def _safe_save(self) -> bool:
+        """Persists task data, logging failures silently and alerting via dialog."""
+        try:
+            self.task_manager.save_to_file()
+            return True
+        except (IOError, OSError, PermissionError) as err:
+            LOGGER.error("Error saving task data: %s", err)
+            messagebox.showerror(
+                "Save Error",
+                f"Failed to save data changes:\n{err}"
+            )
+            return False
 
     def _setup_canvas_metric(self) -> None:
         """Creates dynamic Tkinter Canvas progress bar widget."""
@@ -427,6 +449,7 @@ class KanbanBoard(tk.Frame):
                     "DATA_EXPORTED", filepath, {"count": count}
                 )
             except (IOError, OSError, PermissionError) as err:
+                LOGGER.error("Background export failed: %s", err)
                 err_msg: str = f"Failed export: {err}"
                 self.after(
                     0, lambda: messagebox.showerror("Export Error", err_msg)
@@ -448,12 +471,18 @@ class KanbanBoard(tk.Frame):
 
     def load_board_data(self) -> None:
         """Populates board components from TaskManager state."""
-        tasks = self.task_manager.load_from_file()
-        for task in tasks:
-            if task.status in self.column_frames:
-                self._create_card_widget(
-                    task.task_id, task.title, task.priority, task.status
-                )
+        try:
+            tasks = self.task_manager.load_from_file()
+            for task in tasks:
+                if task.status in self.column_frames:
+                    self._create_card_widget(
+                        task.task_id, task.title, task.priority, task.status
+                    )
+        except (IOError, OSError, PermissionError) as err:
+            LOGGER.error("Failed to load task data from file: %s", err)
+            messagebox.showerror(
+                "Load Error", f"Could not load saved task data:\n{err}"
+            )
         self.update_progress_bar()
 
     def _open_edit_dialog(
@@ -514,8 +543,8 @@ class KanbanBoard(tk.Frame):
                 self._create_card_widget(
                     card_id, new_title, new_prio, col_name
                 )
-                self.task_manager.save_to_file()
-                dialog.destroy()
+                if self._safe_save():
+                    dialog.destroy()
 
         tk.Button(
             dialog, text="Save Changes", bg=config.ACCENT_COLOR, fg="#11111B",
@@ -595,7 +624,8 @@ class KanbanBoard(tk.Frame):
     def clear_done_tasks(self) -> None:
         """Removes all tasks in the 'Done' column and updates UI."""
         self.task_manager.clear_done()
-        self.task_manager.save_to_file()
+        if not self._safe_save():
+            return
 
         done_frame: tk.LabelFrame = self.column_frames["Done"]
         for card in done_frame.winfo_children():
@@ -618,7 +648,8 @@ class KanbanBoard(tk.Frame):
         )
 
         new_task = self.task_manager.add_task(title, priority_text, "To Do")
-        self.task_manager.save_to_file()
+        if not self._safe_save():
+            return
 
         self._create_card_widget(
             new_task.task_id, title, priority_text, "To Do"
@@ -646,7 +677,8 @@ class KanbanBoard(tk.Frame):
             next_col = "Done"
         elif current_col == "Done":
             self.task_manager.remove_task(card.task_id)
-            self.task_manager.save_to_file()
+            if not self._safe_save():
+                return
             card.destroy()
             self.update_progress_bar()
             return
@@ -661,7 +693,8 @@ class KanbanBoard(tk.Frame):
                     t.mark_completed()
                 break
 
-        self.task_manager.save_to_file()
+        if not self._safe_save():
+            return
 
         task_id: str = card.task_id
         card.destroy()
