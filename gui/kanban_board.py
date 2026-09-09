@@ -19,7 +19,6 @@ from gui.analytics import AnalyticsWindow
 from services.event_logger import EventLogger
 from services.task_manager import TaskManager
 
-# Configure built-in logging module to track background and I/O failures silently
 logging.basicConfig(
     filename="app_error.log",
     level=logging.ERROR,
@@ -27,7 +26,6 @@ logging.basicConfig(
 )
 LOGGER: logging.Logger = logging.getLogger(__name__)
 
-# Thread pool executor for background I/O operations
 THREAD_EXECUTOR: concurrent.futures.ThreadPoolExecutor = (
     concurrent.futures.ThreadPoolExecutor(max_workers=2)
 )
@@ -37,35 +35,25 @@ class FocusTimerDialog(tk.Toplevel):
     """Modal dialog providing Pomodoro presets and custom focus session controls."""
 
     def __init__(self, parent: tk.Widget, board_ref: Any) -> None:
-        """Initializes dialog components and sets up modal focus."""
         super().__init__(parent)
         self.board: Any = board_ref
-
         self.title("Focus Timer & Pomodoro")
         self.geometry("340x240")
         self.configure(bg=config.FRAME_BG)
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
-
         self._build_ui()
 
     def _build_ui(self) -> None:
-        """Constructs dialog controls and preset selection buttons."""
+        """Constructs the layout for focus timer dialog controls."""
         tk.Label(
-            self,
-            text="Pomodoro & Focus Timer",
-            fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG,
-            font=("Arial", 12, "bold")
+            self, text="Pomodoro & Focus Timer", fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG, font=("Arial", 12, "bold")
         ).pack(pady=(15, 5))
-
         tk.Label(
-            self,
-            text="Select a preset or enter custom minutes:",
-            fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG,
-            font=("Arial", 9)
+            self, text="Select a preset or enter custom minutes:",
+            fg=config.TEXT_COLOR, bg=config.FRAME_BG, font=("Arial", 9)
         ).pack(pady=(0, 10))
 
         preset_frame: tk.Frame = tk.Frame(self, bg=config.FRAME_BG)
@@ -123,12 +111,12 @@ class FocusTimerDialog(tk.Toplevel):
             btn_stop.pack(pady=5)
 
     def _start_session(self, minutes: int) -> None:
-        """Dispatches active target minutes to board manager and closes modal."""
+        """Starts a focus session with specified minutes."""
         self.board.start_focus_timer(minutes)
         self.destroy()
 
     def _start_custom(self) -> None:
-        """Validates entry value and triggers background focus timer."""
+        """Validates and starts a custom minute focus session."""
         val: str = self.custom_entry.get().strip()
         if val.isdigit() and int(val) > 0:
             self._start_session(int(val))
@@ -138,7 +126,7 @@ class FocusTimerDialog(tk.Toplevel):
             )
 
     def _stop_session(self) -> None:
-        """Triggers timer cancellation on active board component."""
+        """Stops the active focus session."""
         self.board.cancel_focus_timer()
         self.destroy()
 
@@ -149,15 +137,12 @@ class KanbanBoard(tk.Frame):
     DATA_FILE: str = "kanban_data.json"
 
     def __init__(self, parent: tk.Widget) -> None:
-        """Initializes board layout, state, and loads stored task data."""
         super().__init__(parent, bg=config.BG_COLOR)
         self.parent: tk.Widget = parent
         self.columns: List[str] = ["To Do", "In Progress", "Done"]
         self.column_frames: Dict[str, tk.LabelFrame] = {}
         self.all_cards: List[tk.Widget] = []
-
         self.task_manager: TaskManager = TaskManager(self.DATA_FILE)
-
         self.total_cards: int = 0
         self.done_cards: int = 0
         self._timer_running: bool = False
@@ -167,24 +152,22 @@ class KanbanBoard(tk.Frame):
         self._setup_board_columns()
         self._setup_input_panel()
         self._bind_keyboard_events()
-
         self.load_board_data()
 
     def _safe_save(self) -> bool:
-        """Persists task data, logging failures silently and alerting via dialog."""
+        """Saves current state to storage safely handling I/O errors."""
         try:
             self.task_manager.save_to_file()
             return True
         except (IOError, OSError, PermissionError) as err:
             LOGGER.error("Error saving task data: %s", err)
             messagebox.showerror(
-                "Save Error",
-                f"Failed to save data changes:\n{err}"
+                "Save Error", f"Failed to save data changes:\n{err}"
             )
             return False
 
     def _setup_filter_toolbar(self) -> None:
-        """Creates the search toolbar and quick-filter toggle buttons at the top."""
+        """Builds search and filter controls toolbar."""
         toolbar: tk.Frame = tk.Frame(self, bg=config.FRAME_BG, padx=15, pady=8)
         toolbar.pack(fill=tk.X, padx=15, pady=(10, 0))
 
@@ -231,20 +214,18 @@ class KanbanBoard(tk.Frame):
         btn_today.pack(side=tk.LEFT, padx=2)
 
         self.filter_buttons: Dict[str, tk.Button] = {
-            "All": btn_all,
-            "High": btn_high,
-            "Today": btn_today
+            "All": btn_all, "High": btn_high, "Today": btn_today
         }
         self._update_filter_button_styles()
 
     def set_filter_mode(self, mode: str) -> None:
-        """Sets active quick-filter mode and updates visual button states."""
+        """Sets active filter mode and updates card visibility."""
         self.filter_mode.set(mode)
         self._update_filter_button_styles()
         self.filter_tasks()
 
     def _update_filter_button_styles(self) -> None:
-        """Highlights the active filter button and dims inactive ones."""
+        """Updates background highlight colors on filter buttons."""
         active_mode: str = self.filter_mode.get()
         for mode, btn in self.filter_buttons.items():
             if mode == active_mode:
@@ -253,7 +234,7 @@ class KanbanBoard(tk.Frame):
                 btn.config(bg="#313244", fg=config.TEXT_COLOR)
 
     def filter_tasks(self) -> None:
-        """Filters displayed cards in real time based on search query and active quick-filter."""
+        """Filters visible task cards based on search query and priority/due filter."""
         query: str = self.search_var.get().strip().lower()
         mode: str = self.filter_mode.get()
         today_str: str = datetime.date.today().strftime("%Y-%m-%d")
@@ -267,7 +248,6 @@ class KanbanBoard(tk.Frame):
             due_date: str = card.task_due_date
 
             matches_query: bool = not query or query in title
-
             matches_mode: bool = True
             if mode == "High":
                 matches_mode = priority == "HIGH"
@@ -282,22 +262,19 @@ class KanbanBoard(tk.Frame):
                     card.pack_forget()
 
     def _setup_canvas_metric(self) -> None:
-        """Creates dynamic Tkinter Canvas progress bar widget."""
+        """Initializes top progress metric display canvas."""
         self.canvas: tk.Canvas = tk.Canvas(
-            self,
-            height=35,
-            bg=config.FRAME_BG,
-            highlightthickness=0
+            self, height=35, bg=config.FRAME_BG, highlightthickness=0
         )
         self.canvas.pack(fill=tk.X, padx=15, pady=(10, 5))
         self.canvas.bind("<Configure>", self._on_canvas_resize)
 
     def _on_canvas_resize(self, _event: tk.Event) -> None:
-        """Event handler to recalculate canvas render on window resize."""
+        """Handles canvas resize to redraw progress bar correctly."""
         self.update_progress_bar()
 
     def update_progress_bar(self) -> None:
-        """Recalculates card counts and renders progress state if idle."""
+        """Redraws completion percentage metric on the canvas bar."""
         if self._timer_running:
             return
 
@@ -308,49 +285,36 @@ class KanbanBoard(tk.Frame):
 
         self.canvas.delete("all")
         width: int = self.canvas.winfo_width() or 880
-
-        if self.total_cards > 0:
-            ratio: float = self.done_cards / self.total_cards
-        else:
-            ratio = 0.0
-
+        ratio: float = (
+            self.done_cards / self.total_cards if self.total_cards > 0 else 0.0
+        )
         fill_width: float = max(10.0, (width - 20) * ratio)
 
         self.canvas.create_rectangle(
-            10, 5, width - 10, 30,
-            outline=config.TEXT_COLOR,
-            fill=config.BG_COLOR,
-            width=1
+            10, 5, width - 10, 30, outline=config.TEXT_COLOR,
+            fill=config.BG_COLOR, width=1
         )
         self.canvas.create_rectangle(
-            10, 5, fill_width, 30,
-            fill="#A6E3A1",
-            outline=""
+            10, 5, fill_width, 30, fill="#A6E3A1", outline=""
         )
         percent_str: str = (
             f"Board Completion: {int(ratio * 100)}% "
             f"({self.done_cards}/{self.total_cards} Tasks)"
         )
         self.canvas.create_text(
-            width / 2, 17,
-            text=percent_str,
-            fill=config.TEXT_COLOR,
+            width / 2, 17, text=percent_str, fill=config.TEXT_COLOR,
             font=("Arial", 9, "bold")
         )
 
     def _setup_board_columns(self) -> None:
-        """Renders column frames side-by-side."""
+        """Constructs Kanban column frames."""
         board_container: tk.Frame = tk.Frame(self, bg=config.BG_COLOR)
         board_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         for col_name in self.columns:
             col_frame: tk.LabelFrame = tk.LabelFrame(
-                board_container,
-                text=f"  {col_name}  ",
-                bg=config.FRAME_BG,
-                fg=config.TEXT_COLOR,
-                font=("Arial", 11, "bold"),
-                bd=2,
+                board_container, text=f"  {col_name}  ", bg=config.FRAME_BG,
+                fg=config.TEXT_COLOR, font=("Arial", 11, "bold"), bd=2,
                 relief=tk.GROOVE
             )
             col_frame.pack(
@@ -359,7 +323,7 @@ class KanbanBoard(tk.Frame):
             self.column_frames[col_name] = col_frame
 
     def _setup_input_panel(self) -> None:
-        """Renders input controls panel at the bottom with due date and tag support."""
+        """Builds task creation input toolbar at bottom."""
         panel: tk.Frame = tk.Frame(self, bg=config.FRAME_BG, pady=10, padx=10)
         panel.pack(fill=tk.X, side=tk.BOTTOM)
 
@@ -465,16 +429,16 @@ class KanbanBoard(tk.Frame):
     def _apply_hover_effect(
         self, widget: tk.Widget, default_bg: str, hover_bg: str
     ) -> None:
-        """Dynamically alters widget background color on mouse hover events."""
+        """Applies hover mouseover background transitions on buttons."""
         widget.bind("<Enter>", lambda e: widget.config(bg=hover_bg))
         widget.bind("<Leave>", lambda e: widget.config(bg=default_bg))
 
     def open_timer_dialog(self) -> None:
-        """Instantiates and displays top-level modal timer dialog."""
+        """Opens modal dialog for setting up focus session."""
         FocusTimerDialog(self.parent, self)
 
     def start_focus_timer(self, minutes: int = 25) -> None:
-        """Spawns thread worker and streams live countdown state to main UI."""
+        """Starts asynchronous focus timer countdown on separate thread."""
         if self._timer_running:
             messagebox.showwarning(
                 "Timer Running", "A focus timer is already active!"
@@ -484,8 +448,7 @@ class KanbanBoard(tk.Frame):
         self._timer_running = True
         total_seconds: int = minutes * 60
         EventLogger.log_event(
-            "FOCUS_SESSION_STARTED",
-            f"{minutes}m Session",
+            "FOCUS_SESSION_STARTED", f"{minutes}m Session",
             {"duration_min": minutes}
         )
 
@@ -494,9 +457,7 @@ class KanbanBoard(tk.Frame):
             while remaining > 0 and self._timer_running:
                 mins, secs = divmod(remaining, 60)
                 time_str: str = f"Focus Timer: {mins:02d}:{secs:02d} remaining"
-
                 self.after(0, lambda t=time_str: self._draw_timer_canvas(t))
-
                 time.sleep(1)
                 remaining -= 1
 
@@ -507,7 +468,7 @@ class KanbanBoard(tk.Frame):
         threading.Thread(target=timer_worker, daemon=True).start()
 
     def cancel_focus_timer(self) -> None:
-        """Aborts active timer session and resets board display."""
+        """Cancels running focus timer."""
         if self._timer_running:
             self._timer_running = False
             EventLogger.log_event(
@@ -517,13 +478,12 @@ class KanbanBoard(tk.Frame):
             messagebox.showinfo("Timer Cancelled", "Focus session was stopped.")
 
     def _draw_timer_canvas(self, text_str: str) -> None:
-        """Renders live countdown bar on top of board header canvas."""
+        """Renders focus timer countdown inside top canvas area."""
         self.canvas.delete("all")
         width: int = self.canvas.winfo_width() or 880
-
         self.canvas.create_rectangle(
-            10, 5, width - 10, 30,
-            outline="#FAB387", fill=config.FRAME_BG, width=2
+            10, 5, width - 10, 30, outline="#FAB387",
+            fill=config.FRAME_BG, width=2
         )
         self.canvas.create_text(
             width / 2, 17, text=text_str, fill="#FAB387",
@@ -531,11 +491,10 @@ class KanbanBoard(tk.Frame):
         )
 
     def _on_timer_completed(self, minutes: int) -> None:
-        """Triggers when session thread completes cleanly without cancel."""
+        """Handles timer completion UI updates and popup alerts."""
         self.update_progress_bar()
         EventLogger.log_event(
-            "FOCUS_SESSION_COMPLETED",
-            f"{minutes}m Session",
+            "FOCUS_SESSION_COMPLETED", f"{minutes}m Session",
             {"duration_min": minutes}
         )
         msg: str = (
@@ -544,7 +503,7 @@ class KanbanBoard(tk.Frame):
         messagebox.showinfo("Focus Complete", msg)
 
     def export_csv_async(self) -> None:
-        """Executes file export asynchronously using thread pool."""
+        """Exports board tasks asynchronously to target CSV file using ThreadPoolExecutor."""
         filepath: str = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
@@ -567,7 +526,6 @@ class KanbanBoard(tk.Frame):
                 lines.append(
                     f"{clean_title},{status},{priority},{due_date},{clean_tags}\n"
                 )
-
             with open(path, "w", encoding="utf-8") as file:
                 file.writelines(lines)
             return len(data)
@@ -597,7 +555,7 @@ class KanbanBoard(tk.Frame):
         future.add_done_callback(on_complete)
 
     def _bind_keyboard_events(self) -> None:
-        """Binds global app key shortcuts."""
+        """Binds global shortcuts for task focus and creation."""
         self.parent.bind(
             "<Control-n>", lambda e: self.entry_title.focus_set()
         )
@@ -609,7 +567,7 @@ class KanbanBoard(tk.Frame):
         )
 
     def load_board_data(self) -> None:
-        """Populates board components from TaskManager state."""
+        """Loads saved tasks from file and instantiates task card widgets."""
         try:
             tasks = self.task_manager.load_from_file()
             for task in tasks:
@@ -633,7 +591,7 @@ class KanbanBoard(tk.Frame):
         due_date: str,
         tags: List[str]
     ) -> None:
-        """Opens top-level modal dialog to modify card attributes."""
+        """Opens task card edit dialog."""
         dialog: tk.Toplevel = tk.Toplevel(self)
         dialog.title("Edit Task")
         dialog.geometry("320x260")
@@ -685,8 +643,7 @@ class KanbanBoard(tk.Frame):
 
         tk.Radiobutton(
             prio_frame, text="Low", variable=prio_var, value=1,
-            bg=config.FRAME_BG, fg=config.TEXT_COLOR,
-            selectcolor=config.BG_COLOR
+            bg=config.FRAME_BG, fg=config.TEXT_COLOR, selectcolor=config.BG_COLOR
         ).pack(side=tk.LEFT)
 
         tk.Radiobutton(
@@ -704,7 +661,6 @@ class KanbanBoard(tk.Frame):
 
             if new_title:
                 new_prio: str = "HIGH" if prio_var.get() == 2 else "LOW"
-
                 for t in self.task_manager.tasks:
                     if t.task_id == card.task_id:
                         t.title = new_title
@@ -730,6 +686,99 @@ class KanbanBoard(tk.Frame):
             command=save_changes
         ).pack(pady=10)
 
+    def _move_card_vertical(self, card: tk.Widget, direction: int) -> None:
+        """Moves a card up (-1) or down (+1) within its current column list."""
+        col_name: str = card.column_name
+        col_cards: List[tk.Widget] = [
+            c for c in self.all_cards if c.column_name == col_name
+        ]
+
+        if card not in col_cards:
+            return
+
+        idx: int = col_cards.index(card)
+        new_idx: int = idx + direction
+
+        if 0 <= new_idx < len(col_cards):
+            # Swap in master self.all_cards list
+            idx_all: int = self.all_cards.index(col_cards[idx])
+            new_idx_all: int = self.all_cards.index(col_cards[new_idx])
+            self.all_cards[idx_all], self.all_cards[new_idx_all] = (
+                self.all_cards[new_idx_all],
+                self.all_cards[idx_all],
+            )
+
+            # Re-pack column widgets in updated order
+            col_cards[idx], col_cards[new_idx] = col_cards[new_idx], col_cards[idx]
+            for c in col_cards:
+                c.pack_forget()
+            for c in col_cards:
+                c.pack(fill=tk.X, padx=8, pady=5)
+
+            # Synchronize TaskManager underlying tasks list
+            task_dict: Dict[str, Any] = {
+                t.task_id: t for t in self.task_manager.tasks
+            }
+            reordered_tasks: List[Any] = []
+            for c in self.all_cards:
+                if c.task_id in task_dict:
+                    reordered_tasks.append(task_dict[c.task_id])
+
+            for t in self.task_manager.tasks:
+                if t not in reordered_tasks:
+                    reordered_tasks.append(t)
+
+            self.task_manager.tasks = reordered_tasks
+            self._safe_save()
+
+    def _move_card_horizontal(self, card: tk.Widget, direction: int) -> None:
+        """Moves a card left (-1) or right (+1) between Kanban columns."""
+        current_col: str = card.column_name
+        try:
+            curr_col_idx: int = self.columns.index(current_col)
+        except ValueError:
+            return
+
+        new_col_idx: int = curr_col_idx + direction
+        if not 0 <= new_col_idx < len(self.columns):
+            return
+
+        next_col: str = self.columns[new_col_idx]
+        title: str = card.task_title
+        priority_text: str = card.task_priority
+        due_date: str = card.task_due_date
+        task_id: str = card.task_id
+
+        matching_task = next(
+            (t for t in self.task_manager.tasks if t.task_id == task_id),
+            None
+        )
+        tags: List[str] = matching_task.tags if matching_task else []
+
+        for t in self.task_manager.tasks:
+            if t.task_id == task_id:
+                t.status = next_col
+                if next_col == "Done":
+                    t.mark_completed()
+                break
+
+        if not self._safe_save():
+            return
+
+        if card in self.all_cards:
+            self.all_cards.remove(card)
+        card.destroy()
+
+        self._create_card_widget(
+            task_id, title, priority_text, next_col, due_date, tags
+        )
+        self.update_progress_bar()
+
+        if next_col == "Done":
+            EventLogger.log_event(
+                "TASK_COMPLETED", title, {"priority": priority_text}
+            )
+
     def _create_card_widget(
         self,
         task_id: str,
@@ -739,7 +788,7 @@ class KanbanBoard(tk.Frame):
         due_date: str = "",
         tags: Optional[List[str]] = None
     ) -> None:
-        """Creates card frame element displaying title, priority, due date, and tags."""
+        """Instantiates and renders individual task card frame widget."""
         tags = tags if tags is not None else []
 
         card: tk.Frame = tk.Frame(
@@ -755,11 +804,42 @@ class KanbanBoard(tk.Frame):
 
         self.all_cards.append(card)
 
+        card_header: tk.Frame = tk.Frame(card, bg=config.CARD_BG)
+        card_header.pack(fill=tk.X, padx=8, pady=(6, 1))
+
         lbl_title: tk.Label = tk.Label(
-            card, text=title, fg=config.TEXT_COLOR, bg=config.CARD_BG,
+            card_header, text=title, fg=config.TEXT_COLOR, bg=config.CARD_BG,
             font=("Arial", 10, "bold"), anchor="w"
         )
-        lbl_title.pack(fill=tk.X, padx=8, pady=(6, 1))
+        lbl_title.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        btn_right: tk.Button = tk.Button(
+            card_header, text="►", bg=config.CARD_BG, fg=config.TEXT_COLOR,
+            font=("Arial", 7), relief=tk.FLAT, bd=0, cursor="hand2",
+            command=lambda: self._move_card_horizontal(card, 1)
+        )
+        btn_right.pack(side=tk.RIGHT, padx=2)
+
+        btn_left: tk.Button = tk.Button(
+            card_header, text="◄", bg=config.CARD_BG, fg=config.TEXT_COLOR,
+            font=("Arial", 7), relief=tk.FLAT, bd=0, cursor="hand2",
+            command=lambda: self._move_card_horizontal(card, -1)
+        )
+        btn_left.pack(side=tk.RIGHT, padx=2)
+
+        btn_down: tk.Button = tk.Button(
+            card_header, text="▼", bg=config.CARD_BG, fg=config.TEXT_COLOR,
+            font=("Arial", 7), relief=tk.FLAT, bd=0, cursor="hand2",
+            command=lambda: self._move_card_vertical(card, 1)
+        )
+        btn_down.pack(side=tk.RIGHT, padx=2)
+
+        btn_up: tk.Button = tk.Button(
+            card_header, text="▲", bg=config.CARD_BG, fg=config.TEXT_COLOR,
+            font=("Arial", 7), relief=tk.FLAT, bd=0, cursor="hand2",
+            command=lambda: self._move_card_vertical(card, -1)
+        )
+        btn_up.pack(side=tk.RIGHT, padx=2)
 
         due_color: str = config.TEXT_COLOR
         if due_date and column_name != "Done":
@@ -780,27 +860,22 @@ class KanbanBoard(tk.Frame):
             meta_text += f" | Tags: {', '.join(tags)}"
 
         lbl_meta: tk.Label = tk.Label(
-            card, text=meta_text,
-            fg=due_color, bg=config.CARD_BG,
+            card, text=meta_text, fg=due_color, bg=config.CARD_BG,
             font=("Arial", 8, "italic"), anchor="w"
         )
         lbl_meta.pack(fill=tk.X, padx=8, pady=(0, 2))
 
         lbl_action: tk.Label = tk.Label(
-            card, text="Click to Move ->",
-            fg=config.TEXT_COLOR, bg=config.CARD_BG,
-            font=("Arial", 7, "italic"), anchor="w"
+            card, text="Click to advance status ->", fg=config.TEXT_COLOR,
+            bg=config.CARD_BG, font=("Arial", 7, "italic"), anchor="w"
         )
         lbl_action.pack(fill=tk.X, padx=8, pady=(0, 6))
 
         card.click_after_id = None
 
-        def handle_single_click(
-            _event: tk.Event, target_card: tk.Widget
-        ) -> None:
+        def handle_single_click(_event: tk.Event, target_card: tk.Widget) -> None:
             if target_card.click_after_id is not None:
                 self.after_cancel(target_card.click_after_id)
-
             target_card.click_after_id = self.after(
                 250, lambda: self._advance_card_status(target_card)
             )
@@ -816,12 +891,13 @@ class KanbanBoard(tk.Frame):
             if target_card.click_after_id is not None:
                 self.after_cancel(target_card.click_after_id)
                 target_card.click_after_id = None
-
             self._open_edit_dialog(
                 target_card, t_title, t_priority, t_due, t_tags
             )
 
-        for widget in (card, lbl_title, lbl_meta, lbl_action):
+        # Exclude arrow buttons from single/double click binding loop
+        clickable_widgets = (card, lbl_title, lbl_meta, lbl_action, card_header)
+        for widget in clickable_widgets:
             widget.bind(
                 "<Button-1>", lambda e, c=card: handle_single_click(e, c)
             )
@@ -832,11 +908,10 @@ class KanbanBoard(tk.Frame):
                 )
             )
 
-        # Apply current filter rules to the newly created card
         self.filter_tasks()
 
     def clear_done_tasks(self) -> None:
-        """Removes all tasks in the 'Done' column and updates UI."""
+        """Removes all completed tasks in Done state."""
         self.task_manager.clear_done()
         if not self._safe_save():
             return
@@ -850,7 +925,7 @@ class KanbanBoard(tk.Frame):
         self.update_progress_bar()
 
     def add_task_card(self) -> None:
-        """Validates entry, parses due dates/tags, persists data, and renders card."""
+        """Reads input fields and creates new task card."""
         title: str = self.entry_title.get().strip()
         due_date: str = self.entry_due.get().strip()
         tags_raw: str = self.entry_tags.get().strip()
@@ -862,17 +937,11 @@ class KanbanBoard(tk.Frame):
             )
             return
 
-        if self.priority_var.get() == 2:
-            priority_text: str = "HIGH"
-        else:
-            priority_text = "LOW"
+        priority_text: str = "HIGH" if self.priority_var.get() == 2 else "LOW"
 
         new_task = self.task_manager.add_task(
-            title=title,
-            priority=priority_text,
-            status="To Do",
-            due_date=due_date,
-            tags=tags
+            title=title, priority=priority_text, status="To Do",
+            due_date=due_date, tags=tags
         )
         if not self._safe_save():
             return
@@ -881,7 +950,6 @@ class KanbanBoard(tk.Frame):
             new_task.task_id, title, priority_text, "To Do", due_date, tags
         )
         self.update_progress_bar()
-
         EventLogger.log_event(
             "TASK_CREATED", title,
             {"priority": priority_text, "due_date": due_date}
@@ -889,12 +957,11 @@ class KanbanBoard(tk.Frame):
         self.entry_title.delete(0, tk.END)
 
     def _advance_card_status(self, card: tk.Widget) -> None:
-        """Advances task card column or removes it, updating state."""
-        title: str = card.winfo_children()[0].cget("text")
-        meta_text: str = card.winfo_children()[1].cget("text")
-
-        is_high: bool = "HIGH" in meta_text
-        priority_text: str = "HIGH" if is_high else "LOW"
+        """Advances card to next Kanban column on single click."""
+        if not card.winfo_exists():
+            return
+        title: str = card.task_title
+        priority_text: str = card.task_priority
 
         matching_task = next(
             (t for t in self.task_manager.tasks if t.task_id == card.task_id),
