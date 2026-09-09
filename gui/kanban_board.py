@@ -7,6 +7,7 @@ task manager integration, and focus timers.
 import concurrent.futures
 import datetime
 import logging
+import re
 import threading
 import time
 import tkinter as tk
@@ -54,6 +55,17 @@ class KanbanBoard(tk.Frame):
         self._setup_input_panel()
         self._bind_keyboard_events()
         self.load_board_data()
+
+    def _is_valid_date_format(self, date_str: str) -> bool:
+        # Validate YYYY-MM-DD pattern via regex and verify actual calendar validity
+        pattern = r"^\d{4}-\d{2}-\d{2}$"
+        if not re.match(pattern, date_str):
+            return False
+        try:
+            datetime.datetime.strptime(date_str, "%Y-%m-%d")
+            return True
+        except ValueError:
+            return False
 
     def _safe_save(self) -> bool:
         """Saves current state to storage safely handling I/O errors."""
@@ -556,26 +568,38 @@ class KanbanBoard(tk.Frame):
                 t.strip() for t in entry_tags.get().split(",") if t.strip()
             ]
 
-            if new_title:
-                new_prio: str = "HIGH" if prio_var.get() == 2 else "LOW"
-                for t in self.task_manager.tasks:
-                    if t.task_id == card.task_id:
-                        t.title = new_title
-                        t.priority = new_prio
-                        t.due_date = new_due
-                        t.tags = new_tags
-                        break
-
-                col_name: str = card.column_name
-                card_id: str = card.task_id
-                if card in self.all_cards:
-                    self.all_cards.remove(card)
-                card.destroy()
-                self._create_card_widget(
-                    card_id, new_title, new_prio, col_name, new_due, new_tags
+            if not new_title:
+                messagebox.showwarning(
+                    "Validation Error", "Task title cannot be empty!"
                 )
-                if self._safe_save():
-                    dialog.destroy()
+                return
+
+            if new_due and not self._is_valid_date_format(new_due):
+                messagebox.showerror(
+                    "Invalid Date",
+                    "Due date must be in YYYY-MM-DD format (e.g., 2026-10-15)."
+                )
+                return
+
+            new_prio: str = "HIGH" if prio_var.get() == 2 else "LOW"
+            for t in self.task_manager.tasks:
+                if t.task_id == card.task_id:
+                    t.title = new_title
+                    t.priority = new_prio
+                    t.due_date = new_due
+                    t.tags = new_tags
+                    break
+
+            col_name: str = card.column_name
+            card_id: str = card.task_id
+            if card in self.all_cards:
+                self.all_cards.remove(card)
+            card.destroy()
+            self._create_card_widget(
+                card_id, new_title, new_prio, col_name, new_due, new_tags
+            )
+            if self._safe_save():
+                dialog.destroy()
 
         tk.Button(
             dialog, text="Save Changes", bg=config.ACCENT_COLOR, fg="#11111B",
@@ -721,6 +745,13 @@ class KanbanBoard(tk.Frame):
         if not title:
             messagebox.showwarning(
                 "Validation Error", "Task title cannot be empty!"
+            )
+            return
+
+        if due_date and not self._is_valid_date_format(due_date):
+            messagebox.showerror(
+                "Invalid Date",
+                "Due date must be in YYYY-MM-DD format (e.g., 2026-10-15)."
             )
             return
 
