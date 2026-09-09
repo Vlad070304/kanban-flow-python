@@ -15,8 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import config
 from gui.analytics import AnalyticsWindow
-from gui.dialogs.focus_timer_dialog import FocusTimerDialog
-from gui.widgets.kanban_card import KanbanCard
+from gui.dialogs import FocusTimerDialog
+from gui.widgets import KanbanCard
 from services.event_logger import EventLogger
 from services.task_manager import TaskManager
 
