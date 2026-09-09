@@ -2,7 +2,7 @@
 gui/kanban_board.py
 Kanban board component handling task rendering, TaskManager integration,
 card editing dialogs, asynchronous focus timers, background thread exports,
-and event logging with due dates and tags support.
+and event logging with due dates, tags, and real-time search/filtering.
 """
 
 import concurrent.futures
@@ -154,6 +154,7 @@ class KanbanBoard(tk.Frame):
         self.parent: tk.Widget = parent
         self.columns: List[str] = ["To Do", "In Progress", "Done"]
         self.column_frames: Dict[str, tk.LabelFrame] = {}
+        self.all_cards: List[tk.Widget] = []
 
         self.task_manager: TaskManager = TaskManager(self.DATA_FILE)
 
@@ -161,6 +162,7 @@ class KanbanBoard(tk.Frame):
         self.done_cards: int = 0
         self._timer_running: bool = False
 
+        self._setup_filter_toolbar()
         self._setup_canvas_metric()
         self._setup_board_columns()
         self._setup_input_panel()
@@ -180,6 +182,104 @@ class KanbanBoard(tk.Frame):
                 f"Failed to save data changes:\n{err}"
             )
             return False
+
+    def _setup_filter_toolbar(self) -> None:
+        """Creates the search toolbar and quick-filter toggle buttons at the top."""
+        toolbar: tk.Frame = tk.Frame(self, bg=config.FRAME_BG, padx=15, pady=8)
+        toolbar.pack(fill=tk.X, padx=15, pady=(10, 0))
+
+        tk.Label(
+            toolbar, text="Search:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
+            font=("Arial", 9, "bold")
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        self.search_var: tk.StringVar = tk.StringVar()
+        self.search_var.trace_add("write", lambda *args: self.filter_tasks())
+
+        self.entry_search: tk.Entry = tk.Entry(
+            toolbar, textvariable=self.search_var, width=20,
+            bg="#313244", fg=config.TEXT_COLOR, insertbackground="white"
+        )
+        self.entry_search.pack(side=tk.LEFT, padx=(0, 15))
+
+        tk.Label(
+            toolbar, text="Filter:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
+            font=("Arial", 9, "bold")
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        self.filter_mode: tk.StringVar = tk.StringVar(value="All")
+
+        btn_all: tk.Button = tk.Button(
+            toolbar, text="All", bg="#313244", fg=config.TEXT_COLOR,
+            font=("Arial", 8, "bold"), relief=tk.FLAT, cursor="hand2",
+            command=lambda: self.set_filter_mode("All")
+        )
+        btn_all.pack(side=tk.LEFT, padx=2)
+
+        btn_high: tk.Button = tk.Button(
+            toolbar, text="High Priority", bg="#313244", fg=config.TEXT_COLOR,
+            font=("Arial", 8, "bold"), relief=tk.FLAT, cursor="hand2",
+            command=lambda: self.set_filter_mode("High")
+        )
+        btn_high.pack(side=tk.LEFT, padx=2)
+
+        btn_today: tk.Button = tk.Button(
+            toolbar, text="Due Today", bg="#313244", fg=config.TEXT_COLOR,
+            font=("Arial", 8, "bold"), relief=tk.FLAT, cursor="hand2",
+            command=lambda: self.set_filter_mode("Today")
+        )
+        btn_today.pack(side=tk.LEFT, padx=2)
+
+        self.filter_buttons: Dict[str, tk.Button] = {
+            "All": btn_all,
+            "High": btn_high,
+            "Today": btn_today
+        }
+        self._update_filter_button_styles()
+
+    def set_filter_mode(self, mode: str) -> None:
+        """Sets active quick-filter mode and updates visual button states."""
+        self.filter_mode.set(mode)
+        self._update_filter_button_styles()
+        self.filter_tasks()
+
+    def _update_filter_button_styles(self) -> None:
+        """Highlights the active filter button and dims inactive ones."""
+        active_mode: str = self.filter_mode.get()
+        for mode, btn in self.filter_buttons.items():
+            if mode == active_mode:
+                btn.config(bg=config.ACCENT_COLOR, fg="#11111B")
+            else:
+                btn.config(bg="#313244", fg=config.TEXT_COLOR)
+
+    def filter_tasks(self) -> None:
+        """Filters displayed cards in real time based on search query and active quick-filter."""
+        query: str = self.search_var.get().strip().lower()
+        mode: str = self.filter_mode.get()
+        today_str: str = datetime.date.today().strftime("%Y-%m-%d")
+
+        for card in self.all_cards:
+            if not card.winfo_exists():
+                continue
+
+            title: str = card.task_title.lower()
+            priority: str = card.task_priority
+            due_date: str = card.task_due_date
+
+            matches_query: bool = not query or query in title
+
+            matches_mode: bool = True
+            if mode == "High":
+                matches_mode = priority == "HIGH"
+            elif mode == "Today":
+                matches_mode = due_date == today_str
+
+            if matches_query and matches_mode:
+                if not card.winfo_ismapped():
+                    card.pack(fill=tk.X, padx=8, pady=5)
+            else:
+                if card.winfo_ismapped():
+                    card.pack_forget()
 
     def _setup_canvas_metric(self) -> None:
         """Creates dynamic Tkinter Canvas progress bar widget."""
@@ -209,10 +309,11 @@ class KanbanBoard(tk.Frame):
         self.canvas.delete("all")
         width: int = self.canvas.winfo_width() or 880
 
-        ratio: float = (
-            (self.done_cards / self.total_cards)
-            if self.total_cards > 0 else 0.0
-        )
+        if self.total_cards > 0:
+            ratio: float = self.done_cards / self.total_cards
+        else:
+            ratio = 0.0
+
         fill_width: float = max(10.0, (width - 20) * ratio)
 
         self.canvas.create_rectangle(
@@ -503,6 +604,9 @@ class KanbanBoard(tk.Frame):
         self.parent.bind(
             "<Escape>", lambda e: self.entry_title.delete(0, tk.END)
         )
+        self.parent.bind(
+            "<Control-f>", lambda e: self.entry_search.focus_set()
+        )
 
     def load_board_data(self) -> None:
         """Populates board components from TaskManager state."""
@@ -611,6 +715,8 @@ class KanbanBoard(tk.Frame):
 
                 col_name: str = card.column_name
                 card_id: str = card.task_id
+                if card in self.all_cards:
+                    self.all_cards.remove(card)
                 card.destroy()
                 self._create_card_widget(
                     card_id, new_title, new_prio, col_name, new_due, new_tags
@@ -643,6 +749,11 @@ class KanbanBoard(tk.Frame):
         card.pack(fill=tk.X, padx=8, pady=5)
         card.column_name = column_name
         card.task_id = task_id
+        card.task_title = title
+        card.task_priority = priority_text
+        card.task_due_date = due_date
+
+        self.all_cards.append(card)
 
         lbl_title: tk.Label = tk.Label(
             card, text=title, fg=config.TEXT_COLOR, bg=config.CARD_BG,
@@ -721,6 +832,9 @@ class KanbanBoard(tk.Frame):
                 )
             )
 
+        # Apply current filter rules to the newly created card
+        self.filter_tasks()
+
     def clear_done_tasks(self) -> None:
         """Removes all tasks in the 'Done' column and updates UI."""
         self.task_manager.clear_done()
@@ -729,6 +843,8 @@ class KanbanBoard(tk.Frame):
 
         done_frame: tk.LabelFrame = self.column_frames["Done"]
         for card in done_frame.winfo_children():
+            if card in self.all_cards:
+                self.all_cards.remove(card)
             card.destroy()
 
         self.update_progress_bar()
@@ -746,9 +862,10 @@ class KanbanBoard(tk.Frame):
             )
             return
 
-        priority_text: str = (
-            "HIGH" if self.priority_var.get() == 2 else "LOW"
-        )
+        if self.priority_var.get() == 2:
+            priority_text: str = "HIGH"
+        else:
+            priority_text = "LOW"
 
         new_task = self.task_manager.add_task(
             title=title,
@@ -797,6 +914,8 @@ class KanbanBoard(tk.Frame):
             self.task_manager.remove_task(card.task_id)
             if not self._safe_save():
                 return
+            if card in self.all_cards:
+                self.all_cards.remove(card)
             card.destroy()
             self.update_progress_bar()
             return
@@ -815,6 +934,8 @@ class KanbanBoard(tk.Frame):
             return
 
         task_id: str = card.task_id
+        if card in self.all_cards:
+            self.all_cards.remove(card)
         card.destroy()
 
         self._create_card_widget(
