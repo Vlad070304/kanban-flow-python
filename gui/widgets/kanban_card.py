@@ -1,6 +1,6 @@
 """
 gui/widgets/kanban_card.py
-Custom Card Frame component for rendering individual task items.
+Custom Tkinter card widget representing individual tasks on the Kanban board.
 """
 
 import datetime
@@ -11,7 +11,7 @@ import config
 
 
 class KanbanCard(tk.Frame):
-    """Custom Frame widget rendering a single task card in a Kanban column."""
+    """Custom Frame widget rendering task metadata, badges, and control buttons."""
 
     def __init__(
         self,
@@ -19,116 +19,196 @@ class KanbanCard(tk.Frame):
         board: Any,
         task_id: str,
         title: str,
-        priority_text: str,
+        priority: str,
         column_name: str,
         due_date: str = "",
         tags: Optional[List[str]] = None
     ) -> None:
-        super().__init__(parent, bg=config.CARD_BG, bd=1, relief=tk.RAISED)
-        self.board: Any = board
+        self.board = board
         self.task_id: str = task_id
         self.task_title: str = title
-        self.task_priority: str = priority_text
+        self.task_priority: str = priority
         self.column_name: str = column_name
         self.task_due_date: str = due_date
-        self.task_tags: List[str] = tags if tags is not None else []
-        self.click_after_id: Optional[str] = None
+        self.tags: List[str] = tags if tags else []
 
-        self._build_card()
+        # Evaluate overdue status dynamically
+        self.is_overdue: bool = self._check_if_overdue()
 
-    def _build_card(self) -> None:
-        """Constructs and binds events for card UI elements."""
-        card_header: tk.Frame = tk.Frame(self, bg=config.CARD_BG)
-        card_header.pack(fill=tk.X, padx=8, pady=(6, 1))
+        # Dynamic border highlight: red for overdue, standard frame border otherwise
+        border_color: str = "#F38BA8" if self.is_overdue else config.FRAME_BG
+        border_width: int = 2 if self.is_overdue else 1
+
+        super().__init__(
+            parent,
+            bg="#313244",
+            bd=border_width,
+            relief=tk.SOLID,
+            highlightbackground=border_color,
+            highlightthickness=border_width
+        )
+
+        self._build_card_ui()
+
+    def _check_if_overdue(self) -> bool:
+        # Evaluates if task due date is strictly prior to today and not completed
+        if not self.task_due_date or self.column_name == "Done":
+            return False
+        try:
+            due: datetime.date = datetime.datetime.strptime(
+                self.task_due_date, "%Y-%m-%d"
+            ).date()
+            return due < datetime.date.today()
+        except ValueError:
+            return False
+
+    def _build_card_ui(self) -> None:
+        # Title Header with Click-to-Advance
+        title_frame: tk.Frame = tk.Frame(self, bg="#313244")
+        title_frame.pack(fill=tk.X, padx=6, pady=(6, 2))
 
         lbl_title: tk.Label = tk.Label(
-            card_header, text=self.task_title, fg=config.TEXT_COLOR,
-            bg=config.CARD_BG, font=("Arial", 10, "bold"), anchor="w"
+            title_frame,
+            text=self.task_title,
+            fg=config.TEXT_COLOR,
+            bg="#313244",
+            font=("Arial", 10, "bold"),
+            anchor="w",
+            wraplength=180,
+            justify=tk.LEFT,
+            cursor="hand2"
         )
         lbl_title.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        btn_right: tk.Button = tk.Button(
-            card_header, text="►", bg=config.CARD_BG, fg=config.TEXT_COLOR,
-            font=("Arial", 7), relief=tk.FLAT, bd=0, cursor="hand2",
-            command=lambda: self.board.move_card_horizontal(self, 1)
+        lbl_title.bind(
+            "<Button-1>", lambda e: self.board.advance_card_status(self)
         )
-        btn_right.pack(side=tk.RIGHT, padx=2)
 
-        btn_left: tk.Button = tk.Button(
-            card_header, text="◄", bg=config.CARD_BG, fg=config.TEXT_COLOR,
-            font=("Arial", 7), relief=tk.FLAT, bd=0, cursor="hand2",
-            command=lambda: self.board.move_card_horizontal(self, -1)
+        # Metadata Row (Priority, Overdue Alert, Due Date)
+        meta_frame: tk.Frame = tk.Frame(self, bg="#313244")
+        meta_frame.pack(fill=tk.X, padx=6, pady=2)
+
+        prio_color: str = (
+            config.ACCENT_COLOR if self.task_priority == "HIGH" else "#A6ADC8"
         )
-        btn_left.pack(side=tk.RIGHT, padx=2)
-
-        btn_down: tk.Button = tk.Button(
-            card_header, text="▼", bg=config.CARD_BG, fg=config.TEXT_COLOR,
-            font=("Arial", 7), relief=tk.FLAT, bd=0, cursor="hand2",
-            command=lambda: self.board.move_card_vertical(self, 1)
+        lbl_prio: tk.Label = tk.Label(
+            meta_frame,
+            text=f"[{self.task_priority}]",
+            fg=prio_color,
+            bg="#313244",
+            font=("Arial", 8, "bold")
         )
-        btn_down.pack(side=tk.RIGHT, padx=2)
+        lbl_prio.pack(side=tk.LEFT)
 
+        # Add visual red overdue badge if task is past due
+        if self.is_overdue:
+            lbl_overdue: tk.Label = tk.Label(
+                meta_frame,
+                text="[OVERDUE]",
+                fg="#F38BA8",
+                bg="#313244",
+                font=("Arial", 8, "bold")
+            )
+            lbl_overdue.pack(side=tk.LEFT, padx=(4, 0))
+
+        if self.task_due_date:
+            due_color: str = "#F38BA8" if self.is_overdue else "#A6ADC8"
+            lbl_due: tk.Label = tk.Label(
+                meta_frame,
+                text=f"Due: {self.task_due_date}",
+                fg=due_color,
+                bg="#313244",
+                font=("Arial", 8)
+            )
+            lbl_due.pack(side=tk.RIGHT)
+
+        # Tags Row
+        if self.tags:
+            tags_frame: tk.Frame = tk.Frame(self, bg="#313244")
+            tags_frame.pack(fill=tk.X, padx=6, pady=(0, 2))
+            tags_str: str = " ".join([f"#{t}" for t in self.tags])
+            lbl_tags: tk.Label = tk.Label(
+                tags_frame,
+                text=tags_str,
+                fg="#89B4FA",
+                bg="#313244",
+                font=("Arial", 8, "italic")
+            )
+            lbl_tags.pack(side=tk.LEFT)
+
+        # Controls Row (Shift up/down, Edit, Move left/right)
+        btn_frame: tk.Frame = tk.Frame(self, bg="#313244")
+        btn_frame.pack(fill=tk.X, padx=4, pady=(2, 4))
+
+        # Vertical Reordering
         btn_up: tk.Button = tk.Button(
-            card_header, text="▲", bg=config.CARD_BG, fg=config.TEXT_COLOR,
-            font=("Arial", 7), relief=tk.FLAT, bd=0, cursor="hand2",
+            btn_frame,
+            text="▲",
+            bg="#45475A",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 7),
+            relief=tk.FLAT,
+            bd=0,
+            cursor="hand2",
             command=lambda: self.board.move_card_vertical(self, -1)
         )
-        btn_up.pack(side=tk.RIGHT, padx=2)
+        btn_up.pack(side=tk.LEFT, padx=1)
 
-        due_color: str = config.TEXT_COLOR
-        if self.task_due_date and self.column_name != "Done":
-            try:
-                d_date = datetime.datetime.strptime(
-                    self.task_due_date, "%Y-%m-%d"
-                ).date()
-                today = datetime.date.today()
-                if d_date < today:
-                    due_color = "#F38BA8"
-                elif d_date == today:
-                    due_color = "#FAB387"
-            except ValueError:
-                pass
-
-        meta_text: str = f"Prio: {self.task_priority}"
-        if self.task_due_date:
-            meta_text += f" | Due: {self.task_due_date}"
-        if self.task_tags:
-            meta_text += f" | Tags: {', '.join(self.task_tags)}"
-
-        lbl_meta: tk.Label = tk.Label(
-            self, text=meta_text, fg=due_color, bg=config.CARD_BG,
-            font=("Arial", 8, "italic"), anchor="w"
+        btn_down: tk.Button = tk.Button(
+            btn_frame,
+            text="▼",
+            bg="#45475A",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 7),
+            relief=tk.FLAT,
+            bd=0,
+            cursor="hand2",
+            command=lambda: self.board.move_card_vertical(self, 1)
         )
-        lbl_meta.pack(fill=tk.X, padx=8, pady=(0, 2))
+        btn_down.pack(side=tk.LEFT, padx=1)
 
-        lbl_action: tk.Label = tk.Label(
-            self, text="Click to advance status ->", fg=config.TEXT_COLOR,
-            bg=config.CARD_BG, font=("Arial", 7, "italic"), anchor="w"
+        # Edit Dialog Trigger
+        btn_edit: tk.Button = tk.Button(
+            btn_frame,
+            text="Edit",
+            bg="#45475A",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 7, "bold"),
+            relief=tk.FLAT,
+            bd=0,
+            cursor="hand2",
+            command=lambda: self.board.open_edit_dialog(
+                self,
+                self.task_title,
+                self.task_priority,
+                self.task_due_date,
+                self.tags
+            )
         )
-        lbl_action.pack(fill=tk.X, padx=8, pady=(0, 6))
+        btn_edit.pack(side=tk.LEFT, padx=4)
 
-        clickable_widgets = (self, lbl_title, lbl_meta, lbl_action, card_header)
-        for widget in clickable_widgets:
-            widget.bind("<Button-1>", self._handle_single_click)
-            widget.bind("<Double-Button-1>", self._handle_double_click)
-
-    def _handle_single_click(self, _event: tk.Event) -> None:
-        """Schedules status advancement on single click."""
-        if self.click_after_id is not None:
-            self.after_cancel(self.click_after_id)
-        self.click_after_id = self.after(
-            250, lambda: self.board.advance_card_status(self)
+        # Horizontal Column Navigation
+        btn_right: tk.Button = tk.Button(
+            btn_frame,
+            text="►",
+            bg="#45475A",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 7),
+            relief=tk.FLAT,
+            bd=0,
+            cursor="hand2",
+            command=lambda: self.board.move_card_horizontal(self, 1)
         )
+        btn_right.pack(side=tk.RIGHT, padx=1)
 
-    def _handle_double_click(self, _event: tk.Event) -> None:
-        """Cancels single click timer and opens edit dialog on double click."""
-        if self.click_after_id is not None:
-            self.after_cancel(self.click_after_id)
-            self.click_after_id = None
-        self.board.open_edit_dialog(
-            self,
-            self.task_title,
-            self.task_priority,
-            self.task_due_date,
-            self.task_tags
+        btn_left: tk.Button = tk.Button(
+            btn_frame,
+            text="◄",
+            bg="#45475A",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 7),
+            relief=tk.FLAT,
+            bd=0,
+            cursor="hand2",
+            command=lambda: self.board.move_card_horizontal(self, -1)
         )
+        btn_left.pack(side=tk.RIGHT, padx=1)
