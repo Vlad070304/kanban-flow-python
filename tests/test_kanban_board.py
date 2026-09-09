@@ -1,77 +1,72 @@
-"""
-tests/test_kanban_board.py
-Unit test suite verifying KanbanBoard integration and UI actions.
-"""
-
-import tkinter as tk
+import json
+import os
 import unittest
-from unittest.mock import MagicMock, patch
-
+import tkinter as tk
 from gui.kanban_board import KanbanBoard
 
 
 class TestKanbanBoard(unittest.TestCase):
-    """Tests board data loading, card creation, and clear functionality."""
+    # Test suite for validating board logic and file serialization.
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        """Sets up root Tk instance."""
-        cls.root = tk.Tk()
-        cls.root.withdraw()
+    def setUp(self):
+        # Create a hidden Tk root window and set isolated test file path.
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.test_file = "test_kanban_data.json"
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        """Destroys root Tk instance."""
-        cls.root.destroy()
+        # Ensure no residual test JSON exists before test run
+        if os.path.exists(self.test_file):
+            os.remove(self.test_file)
 
-    def setUp(self) -> None:
-        """Standard setUp signature without extra arguments."""
-        with patch(
-            "services.task_manager.TaskManager.load_from_file",
-            return_value=[]
-        ):
-            self.board = KanbanBoard(self.root)
+        # Patch class-level DATA_FILE before instantiation
+        KanbanBoard.DATA_FILE = self.test_file
+        self.board = KanbanBoard(self.root)
 
-    @patch("services.task_manager.TaskManager.save_to_file")
-    def test_add_task_card(self, mock_save: MagicMock) -> None:
-        """Verifies adding a task updates manager and UI card state."""
-        mock_save.return_value = True
-        self.board.entry_title.insert(0, "Test Task Title")
-        self.board.entry_due.delete(0, tk.END)
-        self.board.entry_due.insert(0, "2026-10-15")
+    def tearDown(self):
+        # Clean up created test JSON files and destroy Tk window.
+        if os.path.exists(self.test_file):
+            os.remove(self.test_file)
+        self.root.destroy()
 
+    def test_add_task_card(self):
+        # Test adding a card populates the 'To Do' column correctly.
+        self.board.entry_title.insert(0, "Test Unit Task")
         self.board.add_task_card()
 
-        self.assertEqual(len(self.board.all_cards), 1)
-        self.assertEqual(self.board.all_cards[0].task_title, "Test Task Title")
+        todo_frame = self.board.column_frames["To Do"]
+        cards = todo_frame.winfo_children()
 
-    @patch("services.task_manager.TaskManager.save_to_file")
-    def test_clear_done_tasks(self, mock_save: MagicMock) -> None:
-        """Verifies clearing completed tasks removes card widgets."""
-        mock_save.return_value = True
-        # pylint: disable=protected-access
-        self.board._create_card_widget(
-            "task-99", "Finished Task", "LOW", "Done", "2026-10-01", []
-        )
-        self.assertEqual(len(self.board.all_cards), 1)
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(self.board.total_cards, 1)
+
+    def test_save_and_load_board_data(self):
+        # Test serializing cards to JSON and restoring board state.
+        self.board.entry_title.insert(0, "Persistent Task")
+        self.board.add_task_card()
+        self.board.save_board_data()
+
+        self.assertTrue(os.path.exists(self.test_file))
+
+        with open(self.test_file, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["title"], "Persistent Task")
+        self.assertEqual(data[0]["status"], "To Do")
+
+    def test_clear_done_tasks(self):
+        # Test clearing completed tasks empties the 'Done' column.
+        self.board._create_card_widget("Finished Task", "LOW", "Done")
+        self.board.update_progress_bar()
+
+        self.assertEqual(self.board.done_cards, 1)
 
         self.board.clear_done_tasks()
-        self.assertEqual(len(self.board.all_cards), 0)
 
-    @patch("services.task_manager.TaskManager.save_to_file")
-    @patch("services.task_manager.TaskManager.load_from_file")
-    def test_save_and_load_board_data(
-        self, mock_load: MagicMock, mock_save: MagicMock
-    ) -> None:
-        """Verifies saving triggers storage file write."""
-        mock_save.return_value = True
-        mock_load.return_value = []
-
-        # pylint: disable=protected-access
-        success = self.board._safe_save()
-        self.assertTrue(success)
-        mock_save.assert_called_once()
+        done_cards = self.board.column_frames["Done"].winfo_children()
+        self.assertEqual(len(done_cards), 0)
+        self.assertEqual(self.board.done_cards, 0)
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()
