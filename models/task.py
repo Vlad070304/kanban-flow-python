@@ -1,15 +1,13 @@
 """
 models/task.py
-Defines the core Task data model supporting unique IDs, priority levels,
-status columns, optional due dates, and descriptive tags.
+Task data model supporting dictionary and SQL tuple conversions.
 """
 
-import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional, Dict, Any, Tuple
 
 
 class Task:
-    """Represents an individual Kanban task item."""
+    """Represents an individual task domain model."""
 
     def __init__(
         self,
@@ -18,24 +16,17 @@ class Task:
         priority: str = "LOW",
         status: str = "To Do",
         due_date: str = "",
-        tags: Optional[List[str]] = None,
-        completed_at: Optional[str] = None
+        tags: Optional[List[str]] = None
     ) -> None:
-        """Initializes a Task instance with attributes and metadata."""
         self.task_id: str = task_id
         self.title: str = title
         self.priority: str = priority
         self.status: str = status
         self.due_date: str = due_date
         self.tags: List[str] = tags if tags is not None else []
-        self.completed_at: Optional[str] = completed_at
-
-    def mark_completed(self) -> None:
-        """Marks the task as completed."""
-        self.completed_at = datetime.datetime.now().isoformat()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serializes task attributes into a dictionary for JSON storage."""
+        """Serializes task attributes into a dictionary."""
         return {
             "task_id": self.task_id,
             "title": self.title,
@@ -43,18 +34,35 @@ class Task:
             "status": self.status,
             "due_date": self.due_date,
             "tags": self.tags,
-            "completed_at": self.completed_at
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Task":
-        """Creates a Task from a dictionary, ensuring backward compatibility for legacy records."""
+        """Factory method instantiating a Task from a dictionary."""
         return cls(
-            task_id=data.get("task_id", ""),
-            title=data.get("title", ""),
+            task_id=data["task_id"],
+            title=data["title"],
             priority=data.get("priority", "LOW"),
             status=data.get("status", "To Do"),
             due_date=data.get("due_date", ""),
             tags=data.get("tags", []),
-            completed_at=data.get("completed_at", None)
+        )
+
+    def to_db_row(self) -> Tuple[str, str, str, str, str, str]:
+        """Converts task attributes into a tuple for SQLite INSERT/UPDATE operations."""
+        tags_str = ",".join(self.tags) if self.tags else ""
+        return (self.task_id, self.title, self.priority, self.status, self.due_date, tags_str)
+
+    @classmethod
+    def from_db_row(cls, row: Tuple[str, str, str, str, str, str]) -> "Task":
+        """Factory method instantiating a Task from a database row tuple."""
+        task_id, title, priority, status, due_date, tags_str = row
+        tags = tags_str.split(",") if tags_str else []
+        return cls(
+            task_id=task_id,
+            title=title,
+            priority=priority,
+            status=status,
+            due_date=due_date,
+            tags=tags,
         )
