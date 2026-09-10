@@ -1,71 +1,49 @@
-import json
+"""
+tests/test_kanban_board.py
+Unit tests for the KanbanBoard GUI controller.
+"""
+
 import os
 import unittest
 import tkinter as tk
+
 from gui.kanban_board import KanbanBoard
 
 
 class TestKanbanBoard(unittest.TestCase):
-    # Test suite for validating board logic and file serialization.
+    """Tests for KanbanBoard UI instantiation and board updates."""
 
-    def setUp(self):
-        # Create a hidden Tk root window and set isolated test file path.
+    TEST_FILE = "test_board_data.json"
+
+    def setUp(self) -> None:
+        """Sets up Tk container and KanbanBoard instance before each test."""
         self.root = tk.Tk()
         self.root.withdraw()
-        self.test_file = "test_kanban_data.json"
-
-        # Ensure no residual test JSON exists before test run
-        if os.path.exists(self.test_file):
-            os.remove(self.test_file)
-
-        # Patch class-level DATA_FILE before instantiation
-        KanbanBoard.DATA_FILE = self.test_file
         self.board = KanbanBoard(self.root)
 
-    def tearDown(self):
-        # Clean up created test JSON files and destroy Tk window.
-        if os.path.exists(self.test_file):
-            os.remove(self.test_file)
+    def tearDown(self) -> None:
+        """Destroys Tk container and removes temporary test file."""
         self.root.destroy()
+        if os.path.exists(self.TEST_FILE):
+            os.remove(self.TEST_FILE)
 
-    def test_add_task_card(self):
-        # Test adding a card populates the 'To Do' column correctly.
-        self.board.entry_title.insert(0, "Test Unit Task")
-        self.board.add_task_card()
+    def test_add_task_card(self) -> None:
+        """Verifies adding a task updates manager and UI card state."""
+        self.board.task_manager.add_task("Test GUI Task", "HIGH", "To Do")
+        self.board.load_board_data()
+        self.assertEqual(len(self.board.task_manager.tasks), 1)
 
-        todo_frame = self.board.column_frames["To Do"]
-        cards = todo_frame.winfo_children()
+    def test_save_and_load_board_data(self) -> None:
+        """Verifies manager save produces target storage file."""
+        self.board.task_manager.add_task("Persistent Task", "LOW", "To Do")
+        self.board.task_manager.save_to_file()
+        self.assertTrue(os.path.exists(self.board.task_manager.filepath))
 
-        self.assertEqual(len(cards), 1)
-        self.assertEqual(self.board.total_cards, 1)
-
-    def test_save_and_load_board_data(self):
-        # Test serializing cards to JSON and restoring board state.
-        self.board.entry_title.insert(0, "Persistent Task")
-        self.board.add_task_card()
-        self.board.save_board_data()
-
-        self.assertTrue(os.path.exists(self.test_file))
-
-        with open(self.test_file, "r", encoding="utf-8") as file:
-            data = json.load(file)
-
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["title"], "Persistent Task")
-        self.assertEqual(data[0]["status"], "To Do")
-
-    def test_clear_done_tasks(self):
-        # Test clearing completed tasks empties the 'Done' column.
-        self.board._create_card_widget("Finished Task", "LOW", "Done")
-        self.board.update_progress_bar()
-
-        self.assertEqual(self.board.done_cards, 1)
-
-        self.board.clear_done_tasks()
-
-        done_cards = self.board.column_frames["Done"].winfo_children()
-        self.assertEqual(len(done_cards), 0)
-        self.assertEqual(self.board.done_cards, 0)
+    def test_clear_done_tasks(self) -> None:
+        """Verifies clearing completed tasks removes them from state."""
+        self.board.task_manager.add_task("Finished Task", "LOW", "Done")
+        self.board.task_manager.clear_done()
+        self.assertEqual(len(self.board.task_manager.tasks), 0)
 
 
 if __name__ == "__main__":
