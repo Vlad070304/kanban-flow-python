@@ -16,6 +16,39 @@ class TaskManager:
     def __init__(self, filepath: str = "kanban_data.json") -> None:
         self.filepath: str = filepath
         self.tasks: List[Task] = []
+<<<<<<< Updated upstream
+=======
+        self._init_db()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Returns a configured SQLite database connection."""
+        return sqlite3.connect(self.db_path)
+
+    def _init_db(self) -> None:
+        """Creates tasks table and ensures subtasks column exists."""
+        create_query = """
+        CREATE TABLE IF NOT EXISTS tasks (
+            task_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            priority TEXT NOT NULL,
+            status TEXT NOT NULL,
+            due_date TEXT,
+            tags TEXT,
+            subtasks TEXT
+        );
+        """
+        try:
+            with self._get_connection() as conn:
+                conn.execute(create_query)
+                # Auto-migrate existing database schema if subtasks column is missing
+                cursor = conn.execute("PRAGMA table_info(tasks);")
+                columns = [column[1] for column in cursor.fetchall()]
+                if "subtasks" not in columns:
+                    conn.execute("ALTER TABLE tasks ADD COLUMN subtasks TEXT;")
+                conn.commit()
+        except sqlite3.Error:
+            pass
+>>>>>>> Stashed changes
 
     def add_task(
         self,
@@ -23,7 +56,8 @@ class TaskManager:
         priority: str = "LOW",
         status: str = "To Do",
         due_date: str = "",
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
+        subtasks: Optional[List[dict]] = None
     ) -> Task:
         """Creates and adds a new task instance to the collection."""
         task_id = f"task-{len(self.tasks) + 1000}"
@@ -33,7 +67,8 @@ class TaskManager:
             priority=priority,
             status=status,
             due_date=due_date,
-            tags=tags if tags else []
+            tags=tags if tags else [],
+            subtasks=subtasks if subtasks else []
         )
         self.tasks.append(task)
         return task
@@ -42,14 +77,38 @@ class TaskManager:
         """Removes a task from the collection matching the given task_id."""
         initial_count = len(self.tasks)
         self.tasks = [t for t in self.tasks if t.task_id != task_id]
+<<<<<<< Updated upstream
         return len(self.tasks) < initial_count
+=======
+        if len(self.tasks) < initial_count:
+            try:
+                with self._get_connection() as conn:
+                    conn.execute(
+                        "DELETE FROM tasks WHERE task_id = ?;", (task_id,)
+                    )
+                    conn.commit()
+                return True
+            except sqlite3.Error:
+                return False
+        return False
+>>>>>>> Stashed changes
 
     def clear_done(self) -> None:
         """Removes all tasks currently marked with status 'Done'."""
         self.tasks = [t for t in self.tasks if t.status != "Done"]
 
     def save_to_file(self) -> bool:
+<<<<<<< Updated upstream
         """Saves current task collection to primary storage file."""
+=======
+        """Saves current in-memory task collection to SQLite database."""
+        query = """
+        INSERT OR REPLACE INTO tasks (
+            task_id, title, priority, status, due_date, tags, subtasks
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """
+>>>>>>> Stashed changes
         try:
             data = [t.to_dict() for t in self.tasks]
             with open(self.filepath, "w", encoding="utf-8") as file:
@@ -65,11 +124,24 @@ class TaskManager:
             return self.tasks
 
         try:
+<<<<<<< Updated upstream
             with open(self.filepath, "r", encoding="utf-8") as file:
                 data = json.load(file)
             self.tasks = [Task.from_dict(item) for item in data]
             return self.tasks
         except (OSError, json.JSONDecodeError, KeyError):
+=======
+            with self._get_connection() as conn:
+                query = (
+                    "SELECT task_id, title, priority, status, due_date, "
+                    "tags, subtasks FROM tasks;"
+                )
+                cursor = conn.execute(query)
+                rows = cursor.fetchall()
+                self.tasks = [Task.from_db_row(row) for row in rows]
+                return self.tasks
+        except sqlite3.Error:
+>>>>>>> Stashed changes
             self.tasks = []
             return self.tasks
 

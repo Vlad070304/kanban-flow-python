@@ -243,3 +243,5 @@ Thumbs.db
 *.log
 tmp/
 temp/
+*.db
+kanban_data.db
