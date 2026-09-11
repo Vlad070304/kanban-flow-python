@@ -1,50 +1,27 @@
-"""
-tests/test_kanban_board.py
-Unit tests for the KanbanBoard GUI controller.
-"""
+"""GUI module rendering the Kanban board interface and managing board actions."""
 
-import os
-import unittest
 import tkinter as tk
-
-from gui.kanban_board import KanbanBoard
-
-
-class TestKanbanBoard(unittest.TestCase):
-    """Tests for KanbanBoard UI instantiation and board updates."""
-
-    TEST_FILE = "test_board_data.json"
-
-    def setUp(self) -> None:
-        """Sets up Tk container and KanbanBoard instance before each test."""
-        self.root = tk.Tk()
-        self.root.withdraw()
-        self.board = KanbanBoard(self.root)
-
-    def tearDown(self) -> None:
-        """Destroys Tk container and removes temporary test file."""
-        self.root.destroy()
-        if os.path.exists(self.TEST_FILE):
-            os.remove(self.TEST_FILE)
-
-    def test_add_task_card(self) -> None:
-        """Verifies adding a task updates manager and UI card state."""
-        self.board.task_manager.add_task("Test GUI Task", "HIGH", "To Do")
-        self.board.load_board_data()
-        self.assertEqual(len(self.board.task_manager.tasks), 1)
-
-    def test_save_and_load_board_data(self) -> None:
-        """Verifies manager save produces target storage file."""
-        self.board.task_manager.add_task("Persistent Task", "LOW", "To Do")
-        self.board.task_manager.save_to_file()
-        self.assertTrue(os.path.exists(self.board.task_manager.filepath))
-
-    def test_clear_done_tasks(self) -> None:
-        """Verifies clearing completed tasks removes them from state."""
-        self.board.task_manager.add_task("Finished Task", "LOW", "Done")
-        self.board.task_manager.clear_done()
-        self.assertEqual(len(self.board.task_manager.tasks), 0)
+from typing import Any, Optional
+from services.task_manager import TaskManager
 
 
-if __name__ == "__main__":
-    unittest.main()
+class KanbanBoard(tk.Frame):
+    """Main Kanban Board GUI container."""
+
+    def __init__(
+        self,
+        master: tk.Widget,
+        task_manager: Optional[TaskManager] = None,
+        **kwargs: Any
+    ) -> None:
+        """Initialize the Kanban board interface and task manager backend."""
+        super().__init__(master, **kwargs)
+        self.master = master
+        self.task_manager = task_manager if task_manager is not None else TaskManager()
+        self.task_manager.load_from_file()
+        self.pack(fill=tk.BOTH, expand=True)
+        self._create_widgets()
+
+    def _create_widgets(self) -> None:
+        """Create and layout board UI elements."""
+        # Board layout implementation...

@@ -3,6 +3,7 @@
 import datetime
 import json
 import sqlite3
+from contextlib import closing
 from typing import Any, Dict, List, Optional
 
 from models.task import Task
@@ -16,6 +17,11 @@ class TaskManager:
         self.db_path: str = db_path
         self.tasks: List[Task] = []
         self._init_db()
+
+    @property
+    def filepath(self) -> str:
+        """Return the database file path for compatibility with tests."""
+        return self.db_path
 
     def _get_connection(self) -> sqlite3.Connection:
         """Return a configured SQLite database connection."""
@@ -35,13 +41,13 @@ class TaskManager:
         );
         """
         try:
-            with self._get_connection() as conn:
-                conn.execute(create_query)
-                cursor = conn.execute("PRAGMA table_info(tasks);")
-                columns = [column[1] for column in cursor.fetchall()]
-                if "subtasks" not in columns:
-                    conn.execute("ALTER TABLE tasks ADD COLUMN subtasks TEXT;")
-                conn.commit()
+            with closing(self._get_connection()) as conn:
+                with conn:
+                    conn.execute(create_query)
+                    cursor = conn.execute("PRAGMA table_info(tasks);")
+                    columns = [column[1] for column in cursor.fetchall()]
+                    if "subtasks" not in columns:
+                        conn.execute("ALTER TABLE tasks ADD COLUMN subtasks TEXT;")
         except sqlite3.Error:
             pass
 
@@ -73,9 +79,9 @@ class TaskManager:
         self.tasks = [t for t in self.tasks if t.task_id != task_id]
         if len(self.tasks) < initial_count:
             try:
-                with self._get_connection() as conn:
-                    conn.execute("DELETE FROM tasks WHERE task_id = ?;", (task_id,))
-                    conn.commit()
+                with closing(self._get_connection()) as conn:
+                    with conn:
+                        conn.execute("DELETE FROM tasks WHERE task_id = ?;", (task_id,))
                 return True
             except sqlite3.Error:
                 return False
@@ -85,16 +91,16 @@ class TaskManager:
         """Remove all completed tasks with status 'Done' from memory and database."""
         done_ids = [t.task_id for t in self.tasks if t.status == "Done"]
         self.tasks = [t for t in self.tasks if t.status != "Done"]
-        if done_ids:
-            try:
-                with self._get_connection() as conn:
-                    placeholders = ",".join(["?"] * len(done_ids))
-                    conn.execute(
-                        f"DELETE FROM tasks WHERE task_id IN ({placeholders});", done_ids
-                    )
-                    conn.commit()
-            except sqlite3.Error:
-                pass
+        try:
+            with closing(self._get_connection()) as conn:
+                with conn:
+                    if done_ids:
+                        placeholders = ",".join(["?"] * len(done_ids))
+                        conn.execute(
+                            f"DELETE FROM tasks WHERE task_id IN ({placeholders});", done_ids
+                        )
+        except sqlite3.Error:
+            pass
 
     def get_due_or_overdue_tasks(self) -> List[Task]:
         """Return all incomplete tasks whose due date is today or earlier."""
@@ -115,10 +121,10 @@ class TaskManager:
         VALUES (?, ?, ?, ?, ?, ?, ?);
         """
         try:
-            with self._get_connection() as conn:
-                for task in self.tasks:
-                    conn.execute(query, task.to_db_row())
-                conn.commit()
+            with closing(self._get_connection()) as conn:
+                with conn:
+                    for task in self.tasks:
+                        conn.execute(query, task.to_db_row())
             return True
         except sqlite3.Error:
             return False
@@ -126,7 +132,7 @@ class TaskManager:
     def load_from_file(self) -> List[Task]:
         """Load task collection directly from the SQLite database."""
         try:
-            with self._get_connection() as conn:
+            with closing(self._get_connection()) as conn:
                 query = (
                     "SELECT task_id, title, priority, status, due_date, "
                     "tags, subtasks FROM tasks;"
