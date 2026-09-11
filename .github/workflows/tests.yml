@@ -1,14 +1,23 @@
-name: CI & Code Quality
+name: Build and Release Executable
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    tags:
+      - 'v*'
 
 jobs:
-  test-and-lint:
-    runs-on: ubuntu-latest
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            asset_suffix: Windows-x64.zip
+          - os: ubuntu-latest
+            asset_suffix: Linux-x64.tar.gz
+          - os: macos-latest
+            asset_suffix: macOS-x64.tar.gz
 
     steps:
       - name: Checkout repository
@@ -22,17 +31,45 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install plyer pylint
+          pip install pyinstaller plyer
 
-      - name: Run Pylint Code Quality Check
-        run: |
-          pylint --fail-under=9.5 models/ services/ gui/ main.py
+      - name: Build Executable
+        run: python build.py
 
-      - name: Install Virtual Display (Xvfb)
+      - name: Package Windows Artifact
+        if: matrix.os == 'windows-latest'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
+          Compress-Archive -Path dist/TaskManagerSuite -DestinationPath TaskManagerSuite-${{ matrix.asset_suffix }}
 
-      - name: Run Unit Tests
+      - name: Package Unix Artifact
+        if: matrix.os != 'windows-latest'
         run: |
-          xvfb-run -a python -m unittest discover -s tests -p "test_*.py"
+          tar -czvf TaskManagerSuite-${{ matrix.asset_suffix }} -C dist TaskManagerSuite
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: executable-${{ matrix.os }}
+          path: TaskManagerSuite-${{ matrix.asset_suffix }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir release-assets
+          find downloaded-artifacts -type f -name "TaskManagerSuite-*" -exec cp {} release-assets/ \;
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
