@@ -28,8 +28,8 @@ jobs:
 
       - name: Run Pylint Code Quality Check
         run: |
-          # Lint your core packages and main script
-          pylint models/ services/ gui/ main.py
+          # Lint your core packages and main script with a fail-under threshold of 9.5
+          pylint --fail-under=9.5 models/ services/ gui/ main.py
 
       - name: Run Unit Tests
         run: |
