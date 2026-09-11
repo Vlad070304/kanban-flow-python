@@ -1,5 +1,6 @@
 """Services handling task collection management, SQLite persistence, and backups."""
 
+import datetime
 import json
 import sqlite3
 from typing import Any, Dict, List, Optional
@@ -93,6 +94,16 @@ class TaskManager:
                     conn.commit()
             except sqlite3.Error:
                 pass
+
+    def get_due_or_overdue_tasks(self) -> List[Task]:
+        """Return all incomplete tasks whose due date is today or earlier."""
+        today_str = datetime.date.today().strftime("%Y-%m-%d")
+        due_tasks = []
+        for task in self.tasks:
+            if task.status != "Done" and task.due_date:
+                if task.due_date <= today_str:
+                    due_tasks.append(task)
+        return due_tasks
 
     def save_to_file(self) -> bool:
         """Save current in-memory task collection to the SQLite database."""
