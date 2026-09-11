@@ -1,32 +1,40 @@
-"""
-models/task.py
-Task data model supporting dictionary and SQL tuple conversions.
-"""
+"""Data model module for managing individual Kanban tasks and subtasks."""
 
-from typing import List, Optional, Dict, Any, Tuple
+import json
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class Task:
-    """Represents an individual task domain model."""
+    """Represents a single task item within the Kanban application."""
 
     def __init__(
         self,
-        task_id: str,
         title: str,
         priority: str = "LOW",
         status: str = "To Do",
         due_date: str = "",
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
+        subtasks: Optional[List[Dict[str, Any]]] = None,
+        task_id: Optional[str] = None
     ) -> None:
-        self.task_id: str = task_id
+        """Initialize a new Task instance."""
+        self.task_id: str = task_id or str(uuid.uuid4())
         self.title: str = title
         self.priority: str = priority
         self.status: str = status
         self.due_date: str = due_date
         self.tags: List[str] = tags if tags is not None else []
+        self.subtasks: List[Dict[str, Any]] = subtasks if subtasks is not None else []
+
+    def mark_completed(self) -> None:
+        """Mark task status as Done and set subtasks to completed."""
+        self.status = "Done"
+        for subtask in self.subtasks:
+            subtask["completed"] = True
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serializes task attributes into a dictionary."""
+        """Convert task instance attributes to a dictionary payload."""
         return {
             "task_id": self.task_id,
             "title": self.title,
@@ -34,35 +42,58 @@ class Task:
             "status": self.status,
             "due_date": self.due_date,
             "tags": self.tags,
+            "subtasks": self.subtasks
         }
+
+    def to_db_row(self) -> Tuple[str, str, str, str, str, str, str]:
+        """Convert task instance attributes to an SQL row tuple for database insertion."""
+        tags_str: str = ",".join(self.tags)
+        subtasks_json: str = json.dumps(self.subtasks)
+        return (
+            self.task_id,
+            self.title,
+            self.priority,
+            self.status,
+            self.due_date,
+            tags_str,
+            subtasks_json
+        )
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Task":
-        """Factory method instantiating a Task from a dictionary."""
+        """Instantiate a Task instance from a dictionary payload."""
         return cls(
-            task_id=data["task_id"],
-            title=data["title"],
+            task_id=data.get("task_id"),
+            title=data.get("title", ""),
             priority=data.get("priority", "LOW"),
             status=data.get("status", "To Do"),
             due_date=data.get("due_date", ""),
             tags=data.get("tags", []),
+            subtasks=data.get("subtasks", [])
         )
 
-    def to_db_row(self) -> Tuple[str, str, str, str, str, str]:
-        """Converts task attributes into a tuple for SQLite INSERT/UPDATE operations."""
-        tags_str = ",".join(self.tags) if self.tags else ""
-        return (self.task_id, self.title, self.priority, self.status, self.due_date, tags_str)
-
     @classmethod
-    def from_db_row(cls, row: Tuple[str, str, str, str, str, str]) -> "Task":
-        """Factory method instantiating a Task from a database row tuple."""
-        task_id, title, priority, status, due_date, tags_str = row
-        tags = tags_str.split(",") if tags_str else []
+    def from_db_row(cls, row: Tuple[Any, ...]) -> "Task":
+        """Instantiate a Task instance directly from an SQL database query row."""
+        task_id, title, priority, status, due_date = row[0], row[1], row[2], row[3], row[4]
+
+        tags: List[str] = []
+        if len(row) > 5 and row[5]:
+            tags = [t.strip() for t in str(row[5]).split(",") if t.strip()]
+
+        subtasks: List[Dict[str, Any]] = []
+        if len(row) > 6 and row[6]:
+            try:
+                subtasks = json.loads(row[6])
+            except (json.JSONDecodeError, TypeError):
+                subtasks = []
+
         return cls(
-            task_id=task_id,
-            title=title,
-            priority=priority,
-            status=status,
-            due_date=due_date,
+            task_id=str(task_id),
+            title=str(title),
+            priority=str(priority),
+            status=str(status),
+            due_date=str(due_date) if due_date else "",
             tags=tags,
+            subtasks=subtasks
         )

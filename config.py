@@ -1,3 +1,5 @@
+"""Application configuration and styling constants."""
+
 APP_VERSION = "1.1.0"
 WINDOW_TITLE = "Kanban Task Manager & Productivity Suite"
 WINDOW_GEOMETRY = "950x650"
@@ -8,6 +10,10 @@ FRAME_BG = "#181825"
 CARD_BG = "#313244"
 TEXT_COLOR = "#CDD6F4"
 ACCENT_COLOR = "#89B4FA"
+
+# Task Priority Colors
+HIGH_PRIO_COLOR = "#F38BA8"
+LOW_PRIO_COLOR = "#89B4FA"
 
 # Interactive Hover States
 BTN_HOVER_ADD = "#74C7EC"
