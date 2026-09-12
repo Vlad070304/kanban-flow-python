@@ -13,12 +13,7 @@ class KanbanCard(tk.Frame):
     def __init__(self, parent: tk.Widget, board: Any, task: Task) -> None:
         """Initialize KanbanCard instance."""
         super().__init__(
-            parent,
-            bg=config.CARD_BG,
-            bd=1,
-            relief=tk.RAISED,
-            padx=6,
-            pady=6
+            parent, bg=config.CARD_BG, bd=1, relief=tk.RAISED, padx=6, pady=6
         )
         self.parent: tk.Widget = parent
         self.board: Any = board
@@ -36,9 +31,7 @@ class KanbanCard(tk.Frame):
         low_prio_color: str = getattr(config, "LOW_PRIO_COLOR", "#89B4FA")
 
         prio_color: str = (
-            high_prio_color
-            if self.task.priority == "HIGH"
-            else low_prio_color
+            high_prio_color if self.task.priority == "HIGH" else low_prio_color
         )
 
         lbl_priority: tk.Label = tk.Label(
@@ -46,7 +39,7 @@ class KanbanCard(tk.Frame):
             text=f"[{self.task.priority}]",
             fg=prio_color,
             bg=config.CARD_BG,
-            font=("Arial", 8, "bold")
+            font=("Arial", 8, "bold"),
         )
         lbl_priority.pack(side=tk.LEFT)
 
@@ -58,7 +51,7 @@ class KanbanCard(tk.Frame):
             font=("Arial", 10, "bold"),
             anchor="w",
             wraplength=180,
-            justify=tk.LEFT
+            justify=tk.LEFT,
         )
         lbl_title.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
 
@@ -68,7 +61,7 @@ class KanbanCard(tk.Frame):
                 text=f"Due: {self.task.due_date}",
                 fg="#CDD6F4",
                 bg=config.CARD_BG,
-                font=("Arial", 8)
+                font=("Arial", 8),
             )
             lbl_due.pack(anchor="w", pady=(2, 0))
 
@@ -83,7 +76,7 @@ class KanbanCard(tk.Frame):
                     bg="#313244",
                     font=("Arial", 7, "bold"),
                     padx=3,
-                    pady=1
+                    pady=1,
                 )
                 lbl_tag.pack(side=tk.LEFT, padx=(0, 2))
 
@@ -101,7 +94,7 @@ class KanbanCard(tk.Frame):
                     selectcolor=config.BG_COLOR,
                     activebackground=config.CARD_BG,
                     font=("Arial", 8),
-                    command=lambda i=idx, v=var: self._toggle_subtask(i, v)
+                    command=lambda i=idx, v=var: self._toggle_subtask(i, v),  # type: ignore[misc]
                 )
                 chk.pack(anchor="w")
 
@@ -115,7 +108,7 @@ class KanbanCard(tk.Frame):
             fg=config.TEXT_COLOR,
             font=("Arial", 7),
             relief=tk.FLAT,
-            command=lambda: self.board.move_card_horizontal(self, -1)
+            command=lambda: self.board.move_card_horizontal(self, -1),
         )
         btn_left.pack(side=tk.LEFT, padx=1)
 
@@ -126,7 +119,7 @@ class KanbanCard(tk.Frame):
             fg=config.TEXT_COLOR,
             font=("Arial", 7),
             relief=tk.FLAT,
-            command=lambda: self.board.move_card_vertical(self, -1)
+            command=lambda: self.board.move_card_vertical(self, -1),
         )
         btn_up.pack(side=tk.LEFT, padx=1)
 
@@ -137,7 +130,7 @@ class KanbanCard(tk.Frame):
             fg=config.TEXT_COLOR,
             font=("Arial", 7),
             relief=tk.FLAT,
-            command=lambda: self.board.move_card_vertical(self, 1)
+            command=lambda: self.board.move_card_vertical(self, 1),
         )
         btn_down.pack(side=tk.LEFT, padx=1)
 
@@ -148,7 +141,7 @@ class KanbanCard(tk.Frame):
             fg=config.TEXT_COLOR,
             font=("Arial", 7),
             relief=tk.FLAT,
-            command=lambda: self.board.move_card_horizontal(self, 1)
+            command=lambda: self.board.move_card_horizontal(self, 1),
         )
         btn_right.pack(side=tk.LEFT, padx=1)
 
@@ -160,7 +153,7 @@ class KanbanCard(tk.Frame):
             font=("Arial", 7, "bold"),
             relief=tk.FLAT,
             cursor="hand2",
-            command=self._trigger_edit
+            command=self._trigger_edit,
         )
         btn_edit.pack(side=tk.RIGHT, padx=1)
 
@@ -176,12 +169,10 @@ class KanbanCard(tk.Frame):
         menu = tk.Menu(self, tearoff=0)
         menu.add_command(label="Edit Task", command=self._trigger_edit)
         menu.add_command(
-            label="Move Left",
-            command=lambda: self.board.move_card_horizontal(self, -1)
+            label="Move Left", command=lambda: self.board.move_card_horizontal(self, -1)
         )
         menu.add_command(
-            label="Move Right",
-            command=lambda: self.board.move_card_horizontal(self, 1)
+            label="Move Right", command=lambda: self.board.move_card_horizontal(self, 1)
         )
         menu.post(event.x_root, event.y_root)
 
@@ -192,7 +183,7 @@ class KanbanCard(tk.Frame):
             self.task.title,
             self.task.priority,
             self.task.due_date,
-            self.task.tags
+            self.task.tags,
         )
 
     def _toggle_subtask(self, index: int, var: tk.BooleanVar) -> None:

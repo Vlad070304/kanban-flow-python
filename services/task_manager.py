@@ -4,18 +4,18 @@ import datetime
 import json
 import sqlite3
 from contextlib import closing
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from models.task import Task
 
 
 class TaskManager:
-    """Manages CRUD operations, SQLite persistence, and backup options for Task objects."""
+    """Manage CRUD operations, SQLite persistence, and task backups."""
 
     def __init__(self, db_path: str = "kanban_data.db") -> None:
         """Initialize TaskManager with an SQLite database connection target."""
         self.db_path: str = db_path
-        self.tasks: List[Task] = []
+        self.tasks: list[Task] = []
         self._init_db()
 
     @property
@@ -57,8 +57,8 @@ class TaskManager:
         priority: str = "LOW",
         status: str = "To Do",
         due_date: str = "",
-        tags: Optional[List[str]] = None,
-        subtasks: Optional[List[Dict[str, Any]]] = None
+        tags: list[str] | None = None,
+        subtasks: list[dict[str, Any]] | None = None,
     ) -> Task:
         """Create and add a new task instance to the collection."""
         task = Task(
@@ -67,7 +67,7 @@ class TaskManager:
             status=status,
             due_date=due_date,
             tags=tags if tags else [],
-            subtasks=subtasks if subtasks else []
+            subtasks=subtasks if subtasks else [],
         )
         self.tasks.append(task)
         self.save_to_file()
@@ -97,12 +97,13 @@ class TaskManager:
                     if done_ids:
                         placeholders = ",".join(["?"] * len(done_ids))
                         conn.execute(
-                            f"DELETE FROM tasks WHERE task_id IN ({placeholders});", done_ids
+                            f"DELETE FROM tasks WHERE task_id IN ({placeholders});",
+                            done_ids,
                         )
         except sqlite3.Error:
             pass
 
-    def get_due_or_overdue_tasks(self) -> List[Task]:
+    def get_due_or_overdue_tasks(self) -> list[Task]:
         """Return all incomplete tasks whose due date is today or earlier."""
         today_str = datetime.date.today().strftime("%Y-%m-%d")
         due_tasks = []
@@ -129,7 +130,7 @@ class TaskManager:
         except sqlite3.Error:
             return False
 
-    def load_from_file(self) -> List[Task]:
+    def load_from_file(self) -> list[Task]:
         """Load task collection directly from the SQLite database."""
         try:
             with closing(self._get_connection()) as conn:
@@ -156,9 +157,9 @@ class TaskManager:
             return False
 
     def restore_backup(self, source_filepath: str) -> bool:
-        """Restore tasks from a JSON backup file and persist to primary SQLite storage."""
+        """Restore tasks from JSON and persist them to SQLite storage."""
         try:
-            with open(source_filepath, "r", encoding="utf-8") as file:
+            with open(source_filepath, encoding="utf-8") as file:
                 data = json.load(file)
             self.tasks = [Task.from_dict(item) for item in data]
             self.save_to_file()

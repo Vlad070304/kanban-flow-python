@@ -46,20 +46,20 @@ class TestEventLogger(unittest.TestCase):
                 "timestamp": "2026-09-01 10:00:00",
                 "event": "TASK_COMPLETED",
                 "target": "Task 1",
-                "details": {"priority": "LOW"}
+                "details": {"priority": "LOW"},
             },
             {
                 "timestamp": "2026-09-01 11:00:00",
                 "event": "FOCUS_SESSION_COMPLETED",
                 "target": "25m Session",
-                "details": {"duration_min": 25}
+                "details": {"duration_min": 25},
             },
             {
                 "timestamp": "2026-09-02 14:00:00",
                 "event": "FOCUS_SESSION_COMPLETED",
                 "target": "15m Session",
-                "details": {"duration_min": 15}
-            }
+                "details": {"duration_min": 15},
+            },
         ]
 
         with open(self.test_log_file, "w", encoding="utf-8") as file:

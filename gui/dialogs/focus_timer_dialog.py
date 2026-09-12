@@ -20,42 +20,63 @@ class FocusTimerDialog(tk.Toplevel):
         self.geometry("340x240")
         self.configure(bg=config.FRAME_BG)
         self.resizable(False, False)
-        self.transient(parent)
+        self.transient(parent)  # type: ignore[call-overload]
         self.grab_set()
         self._build_ui()
 
     def _build_ui(self) -> None:
         """Constructs the layout for focus timer dialog controls."""
         tk.Label(
-            self, text="Pomodoro & Focus Timer", fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG, font=("Arial", 12, "bold")
+            self,
+            text="Pomodoro & Focus Timer",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 12, "bold"),
         ).pack(pady=(15, 5))
         tk.Label(
-            self, text="Select a preset or enter custom minutes:",
-            fg=config.TEXT_COLOR, bg=config.FRAME_BG, font=("Arial", 9)
+            self,
+            text="Select a preset or enter custom minutes:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9),
         ).pack(pady=(0, 10))
 
         preset_frame: tk.Frame = tk.Frame(self, bg=config.FRAME_BG)
         preset_frame.pack(fill=tk.X, padx=20, pady=5)
 
         btn_25: tk.Button = tk.Button(
-            preset_frame, text="25m Focus", bg=config.ACCENT_COLOR, fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=lambda: self._start_session(25)
+            preset_frame,
+            text="25m Focus",
+            bg=config.ACCENT_COLOR,
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self._start_session(25),
         )
         btn_25.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
 
         btn_15: tk.Button = tk.Button(
-            preset_frame, text="15m Break", bg="#89B4FA", fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=lambda: self._start_session(15)
+            preset_frame,
+            text="15m Break",
+            bg="#89B4FA",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self._start_session(15),
         )
         btn_15.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
 
         btn_5: tk.Button = tk.Button(
-            preset_frame, text="5m Rest", bg="#A6E3A1", fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=lambda: self._start_session(5)
+            preset_frame,
+            text="5m Rest",
+            bg="#A6E3A1",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self._start_session(5),
         )
         btn_5.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
 
@@ -63,29 +84,45 @@ class FocusTimerDialog(tk.Toplevel):
         custom_frame.pack(fill=tk.X, padx=20, pady=12)
 
         tk.Label(
-            custom_frame, text="Custom (mins):", fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+            custom_frame,
+            text="Custom (mins):",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.custom_entry: tk.Entry = tk.Entry(
-            custom_frame, width=8, bg="#313244", fg=config.TEXT_COLOR,
-            insertbackground="white"
+            custom_frame,
+            width=8,
+            bg="#313244",
+            fg=config.TEXT_COLOR,
+            insertbackground="white",
         )
         self.custom_entry.insert(0, "10")
         self.custom_entry.pack(side=tk.LEFT, padx=5)
 
         btn_custom: tk.Button = tk.Button(
-            custom_frame, text="Start", bg="#FAB387", fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=self._start_custom
+            custom_frame,
+            text="Start",
+            bg="#FAB387",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=self._start_custom,
         )
         btn_custom.pack(side=tk.LEFT, padx=5)
 
         if getattr(self.board, "_timer_running", False):
             btn_stop: tk.Button = tk.Button(
-                self, text="Stop Current Session", bg="#F38BA8", fg="#11111B",
-                font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-                command=self._stop_session
+                self,
+                text="Stop Current Session",
+                bg="#F38BA8",
+                fg="#11111B",
+                font=("Arial", 9, "bold"),
+                relief=tk.FLAT,
+                cursor="hand2",
+                command=self._stop_session,
             )
             btn_stop.pack(pady=5)
 
