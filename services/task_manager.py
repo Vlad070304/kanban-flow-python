@@ -12,6 +12,8 @@ from models.task import Task
 class TaskManager:
     """Manage CRUD operations, SQLite persistence, and task backups."""
 
+    CURRENT_SCHEMA_VERSION = 1
+
     def __init__(self, db_path: str = "kanban_data.db") -> None:
         """Initialize TaskManager with an SQLite database connection target."""
         self.db_path: str = db_path
@@ -28,28 +30,58 @@ class TaskManager:
         return sqlite3.connect(self.db_path)
 
     def _init_db(self) -> None:
-        """Create tasks table and ensure subtasks column exists."""
-        create_query = """
-        CREATE TABLE IF NOT EXISTS tasks (
-            task_id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            priority TEXT NOT NULL,
-            status TEXT NOT NULL,
-            due_date TEXT,
-            tags TEXT,
-            subtasks TEXT
-        );
-        """
-        try:
-            with closing(self._get_connection()) as conn:
-                with conn:
-                    conn.execute(create_query)
-                    cursor = conn.execute("PRAGMA table_info(tasks);")
-                    columns = [column[1] for column in cursor.fetchall()]
-                    if "subtasks" not in columns:
-                        conn.execute("ALTER TABLE tasks ADD COLUMN subtasks TEXT;")
-        except sqlite3.Error:
-            pass
+        """Initialize the database and apply all pending schema migrations."""
+        with closing(self._get_connection()) as conn, conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                );
+                """
+            )
+            applied_versions = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT version FROM schema_migrations ORDER BY version;"
+                )
+            }
+
+            migrations = {1: self._migration_001_initial_schema}
+            for version in range(1, self.CURRENT_SCHEMA_VERSION + 1):
+                if version in applied_versions:
+                    continue
+                migrations[version](conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, applied_at)
+                    VALUES (?, ?);
+                    """,
+                    (
+                        version,
+                        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    ),
+                )
+
+    @staticmethod
+    def _migration_001_initial_schema(conn: sqlite3.Connection) -> None:
+        """Create the task table and upgrade legacy databases with subtasks."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tasks (
+                task_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                priority TEXT NOT NULL,
+                status TEXT NOT NULL,
+                due_date TEXT,
+                tags TEXT,
+                subtasks TEXT
+            );
+            """
+        )
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(tasks);")}
+        if "subtasks" not in columns:
+            conn.execute("ALTER TABLE tasks ADD COLUMN subtasks TEXT;")
 
     def add_task(
         self,
