@@ -34,4 +34,16 @@ jobs:
         run: python -m mypy
 
       - name: Run unit tests
-        run: python -m unittest discover -s tests -p "test_*.py" -v
+        run: python -m coverage run --source=models,services -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Report test coverage
+        run: python -m coverage report --show-missing --fail-under=75
+
+      - name: Generate coverage artifact
+        run: python -m coverage xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml

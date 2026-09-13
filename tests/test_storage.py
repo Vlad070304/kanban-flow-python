@@ -5,6 +5,7 @@ Unit tests for EventLogger storage and analytics aggregation methods.
 
 import json
 import os
+import tempfile
 import unittest
 
 from services.event_logger import EventLogger
@@ -27,6 +28,21 @@ class TestEventLogger(unittest.TestCase):
         """Verifies empty list returned when log file does not exist."""
         logs = EventLogger.read_logs()
         self.assertEqual(logs, [])
+
+    def test_read_invalid_json_returns_empty_list(self):
+        """Verifies malformed log files are handled safely."""
+        with open(self.test_log_file, "w", encoding="utf-8") as file:
+            file.write("{")
+
+        self.assertEqual(EventLogger.read_logs(), [])
+
+    def test_log_event_handles_unwritable_path(self):
+        """Verifies log write errors do not escape the logging service."""
+        with tempfile.TemporaryDirectory() as directory:
+            EventLogger.LOG_FILE = directory
+            EventLogger.log_event("TASK_COMPLETED", "Task", {})
+
+        EventLogger.LOG_FILE = self.test_log_file
 
     def test_log_event_and_read(self):
         """Verifies events are correctly written to file and read back."""
@@ -74,6 +90,16 @@ class TestEventLogger(unittest.TestCase):
         self.assertEqual(summary["daily_focus"]["2026-09-01"], 25)
         self.assertEqual(summary["daily_focus"]["2026-09-02"], 15)
         self.assertEqual(len(summary["logs"]), 3)
+
+    def test_summary_skips_events_without_timestamps(self):
+        """Verifies incomplete events do not corrupt daily analytics."""
+        with open(self.test_log_file, "w", encoding="utf-8") as file:
+            json.dump([{"event": "TASK_COMPLETED", "details": {}}], file)
+
+        summary = EventLogger.get_analytics_summary()
+
+        self.assertEqual(summary["completed_count"], 1)
+        self.assertEqual(dict(summary["daily_tasks"]), {})
 
 
 if __name__ == "__main__":

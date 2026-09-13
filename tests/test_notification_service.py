@@ -6,6 +6,7 @@ from models.task import Task
 from services.notification_service import (
     clear_reminder_state,
     notify_due_tasks,
+    send_notification,
 )
 
 
@@ -44,6 +45,21 @@ class TestNotificationService(unittest.TestCase):
         notify_due_tasks([task], date(2026, 9, 14))
 
         self.assertEqual(send_notification.call_count, 2)
+
+    @patch("services.notification_service._PLYER_AVAILABLE", True)
+    @patch("services.notification_service.notification", create=True)
+    def test_send_notification_delegates_to_plyer(
+        self, notification: unittest.mock.Mock
+    ) -> None:
+        """Verifies native notification arguments are passed to plyer."""
+        send_notification("Title", "Message")
+
+        notification.notify.assert_called_once_with(
+            title="Title",
+            message="Message",
+            app_name="Task Manager Suite",
+            timeout=6,
+        )
 
 
 if __name__ == "__main__":

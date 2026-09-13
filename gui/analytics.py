@@ -16,6 +16,21 @@ from services.event_logger import EventLogger
 THREAD_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 
+def export_analytics_csv(log_data: list[dict[str, Any]], path: str) -> int:
+    """Write activity logs to CSV and return the number of exported records."""
+    lines = ["Timestamp,Event,Target,Details\n"]
+    for log in log_data:
+        timestamp = log.get("timestamp", "")
+        event = log.get("event", "")
+        target = " ".join(str(log.get("target", "")).replace(",", " ").split())
+        details = str(log.get("details", "")).replace(",", ";")
+        lines.append(f"{timestamp},{event},{target},{details}\n")
+
+    with open(path, "w", encoding="utf-8") as file:
+        file.writelines(lines)
+    return len(log_data)
+
+
 class AnalyticsWindow(tk.Toplevel):
     """Top-level modal window showing productivity metrics and activity history."""
 
@@ -286,17 +301,7 @@ class AnalyticsWindow(tk.Toplevel):
         logs = EventLogger.read_logs()
 
         def write_analytics_file(log_data: list[dict[str, Any]], path: str) -> int:
-            lines = ["Timestamp,Event,Target,Details\n"]
-            for log in log_data:
-                ts = log.get("timestamp", "")
-                evt = log.get("event", "")
-                target = str(log.get("target", "")).replace(",", " ")
-                details = str(log.get("details", "")).replace(",", ";")
-                lines.append(f"{ts},{evt},{target},{details}\n")
-
-            with open(path, "w", encoding="utf-8") as file:
-                file.writelines(lines)
-            return len(log_data)
+            return export_analytics_csv(log_data, path)
 
         def on_export_done(future: concurrent.futures.Future[int]) -> None:
             try:

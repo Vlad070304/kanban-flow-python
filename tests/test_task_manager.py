@@ -5,6 +5,7 @@ Unit tests for Task model serialization and SQLite TaskManager service operation
 
 import os
 import sqlite3
+import tempfile
 import unittest
 from contextlib import closing
 
@@ -38,6 +39,27 @@ class TestTaskModel(unittest.TestCase):
         self.assertEqual(original.task_id, restored.task_id)
         self.assertEqual(original.tags, restored.tags)
 
+    def test_task_completion_and_dict_roundtrip(self) -> None:
+        """Verifies completion updates subtasks and dictionary serialization."""
+        task = Task(
+            task_id="t-003",
+            title="Complete task",
+            subtasks=[{"title": "Step", "completed": False}],
+        )
+
+        task.mark_completed()
+        restored = Task.from_dict(task.to_dict())
+
+        self.assertEqual(task.status, "Done")
+        self.assertTrue(task.subtasks[0]["completed"])
+        self.assertEqual(restored.to_dict(), task.to_dict())
+
+    def test_invalid_subtask_json_uses_empty_list(self) -> None:
+        """Verifies malformed persisted subtask data does not break loading."""
+        restored = Task.from_db_row(("id", "Title", "LOW", "To Do", "", "", "{"))
+
+        self.assertEqual(restored.subtasks, [])
+
 
 class TestTaskManagerSQLite(unittest.TestCase):
     """Tests for TaskManager SQLite operations."""
@@ -65,6 +87,39 @@ class TestTaskManagerSQLite(unittest.TestCase):
         loaded = new_manager.load_from_file()
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0].task_id, task.task_id)
+
+    def test_remove_and_clear_done(self) -> None:
+        """Verifies task deletion works in memory and SQLite."""
+        active = self.manager.add_task("Active")
+        done = self.manager.add_task("Done", status="Done")
+
+        self.assertTrue(self.manager.remove_task(active.task_id))
+        self.assertFalse(self.manager.remove_task("missing"))
+        self.manager.clear_done()
+
+        loaded = TaskManager(db_path=self.TEST_DB).load_from_file()
+        self.assertEqual([task.task_id for task in loaded], [])
+        self.assertNotEqual(active.task_id, done.task_id)
+
+    def test_due_task_filter_excludes_done_and_future_tasks(self) -> None:
+        """Verifies due-task lookup excludes completed and future tasks."""
+        self.manager.add_task("Due", due_date="2000-01-01")
+        self.manager.add_task("Future", due_date="2999-01-01")
+        self.manager.add_task("Completed", due_date="2000-01-01", status="Done")
+
+        due_tasks = self.manager.get_due_or_overdue_tasks()
+
+        self.assertEqual([task.title for task in due_tasks], ["Due"])
+
+    def test_restore_backup_rejects_invalid_json(self) -> None:
+        """Verifies invalid backup files return false without replacing tasks."""
+        with tempfile.TemporaryDirectory() as directory:
+            backup_path = os.path.join(directory, "invalid.json")
+            with open(backup_path, "w", encoding="utf-8") as file:
+                file.write("{")
+
+            self.assertFalse(self.manager.restore_backup(backup_path))
+            self.assertEqual(self.manager.tasks, [])
 
     def test_migrates_legacy_database_and_records_version(self) -> None:
         """Verifies legacy databases receive the subtasks migration once."""
@@ -116,6 +171,29 @@ class TestTaskManagerSQLite(unittest.TestCase):
                 ).fetchone()[0],
                 1,
             )
+
+    def test_export_and_restore_backup(self) -> None:
+        """Verifies JSON backups preserve task fields through restore."""
+        task = self.manager.add_task(
+            "Backup task",
+            priority="HIGH",
+            tags=["backup"],
+            subtasks=[{"title": "Verify", "completed": False}],
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            backup_path = os.path.join(directory, "tasks.json")
+            self.assertTrue(self.manager.export_backup(backup_path))
+
+            restored_manager = TaskManager(
+                db_path=os.path.join(directory, "restored.db")
+            )
+            self.assertTrue(restored_manager.restore_backup(backup_path))
+            restored = restored_manager.tasks[0]
+
+        self.assertEqual(restored.task_id, task.task_id)
+        self.assertEqual(restored.tags, ["backup"])
+        self.assertEqual(restored.subtasks, [{"title": "Verify", "completed": False}])
 
 
 if __name__ == "__main__":

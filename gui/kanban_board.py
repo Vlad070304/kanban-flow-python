@@ -204,18 +204,18 @@ class KanbanBoard(tk.Frame):
             priority: str = card.task.priority
             due_date: str = card.task.due_date
 
-            matches_query: bool = not query or query in title
+            matches_query: bool = (
+                not query
+                or query in title
+                or any(query in tag.lower() for tag in card.task.tags)
+            )
             matches_mode: bool = True
             if mode == "High":
                 matches_mode = priority == "HIGH"
             elif mode == "Today":
                 matches_mode = due_date == today_str
 
-            matches_tags: bool = not query or any(
-                query in tag.lower() for tag in card.task.tags
-            )
-
-            if matches_query and matches_tags and matches_mode:
+            if matches_query and matches_mode:
                 if not card.winfo_ismapped():
                     card.pack(fill=tk.X, padx=8, pady=5)
             else:
