@@ -9,7 +9,7 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import config
 from gui.analytics import AnalyticsWindow
@@ -23,7 +23,7 @@ from services.task_manager import TaskManager
 logging.basicConfig(
     filename="app_error.log",
     level=logging.ERROR,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -41,9 +41,9 @@ class KanbanBoard(tk.Frame):
         """Initialize KanbanBoard container instance."""
         super().__init__(parent, bg=config.BG_COLOR)
         self.parent: tk.Widget = parent
-        self.columns: List[str] = ["To Do", "In Progress", "Done"]
-        self.column_frames: Dict[str, tk.LabelFrame] = {}
-        self.all_cards: List[KanbanCard] = []
+        self.columns: list[str] = ["To Do", "In Progress", "Done"]
+        self.column_frames: dict[str, tk.LabelFrame] = {}
+        self.all_cards: list[KanbanCard] = []
         self.task_manager: TaskManager = TaskManager(self.DATA_FILE)
         self.total_cards: int = 0
         self.done_cards: int = 0
@@ -72,7 +72,7 @@ class KanbanBoard(tk.Frame):
         try:
             self.task_manager.save_to_file()
             return True
-        except (sqlite3.Error, IOError, OSError) as err:
+        except (sqlite3.Error, OSError) as err:
             LOGGER.error("Error saving task data: %s", err)
             messagebox.showerror("Save Error", f"Failed to save data changes:\n{err}")
             return False
@@ -83,61 +83,90 @@ class KanbanBoard(tk.Frame):
         toolbar.pack(fill=tk.X, padx=15, pady=(10, 0))
 
         tk.Label(
-            toolbar, text="Search:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
-            font=("Arial", 9, "bold")
+            toolbar,
+            text="Search:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.search_var: tk.StringVar = tk.StringVar()
         self.search_var.trace_add("write", lambda *args: self.filter_tasks())
 
         self.entry_search: tk.Entry = tk.Entry(
-            toolbar, textvariable=self.search_var, width=20,
-            bg="#313244", fg=config.TEXT_COLOR, insertbackground="white"
+            toolbar,
+            textvariable=self.search_var,
+            width=20,
+            bg="#313244",
+            fg=config.TEXT_COLOR,
+            insertbackground="white",
         )
         self.entry_search.pack(side=tk.LEFT, padx=(0, 15))
 
         tk.Label(
-            toolbar, text="Filter:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
-            font=("Arial", 9, "bold")
+            toolbar,
+            text="Filter:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(side=tk.LEFT, padx=(0, 5))
 
         self.filter_mode: tk.StringVar = tk.StringVar(value="All")
 
         btn_all: tk.Button = tk.Button(
-            toolbar, text="All", bg="#313244", fg=config.TEXT_COLOR,
-            font=("Arial", 8, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=lambda: self.set_filter_mode("All")
+            toolbar,
+            text="All",
+            bg="#313244",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 8, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self.set_filter_mode("All"),
         )
         btn_all.pack(side=tk.LEFT, padx=2)
 
         btn_high: tk.Button = tk.Button(
-            toolbar, text="High Priority", bg="#313244", fg=config.TEXT_COLOR,
-            font=("Arial", 8, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=lambda: self.set_filter_mode("High")
+            toolbar,
+            text="High Priority",
+            bg="#313244",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 8, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self.set_filter_mode("High"),
         )
         btn_high.pack(side=tk.LEFT, padx=2)
 
         btn_today: tk.Button = tk.Button(
-            toolbar, text="Due Today", bg="#313244", fg=config.TEXT_COLOR,
-            font=("Arial", 8, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=lambda: self.set_filter_mode("Today")
+            toolbar,
+            text="Due Today",
+            bg="#313244",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 8, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self.set_filter_mode("Today"),
         )
         btn_today.pack(side=tk.LEFT, padx=2)
 
-        self.filter_buttons: Dict[str, tk.Button] = {
-            "All": btn_all, "High": btn_high, "Today": btn_today
+        self.filter_buttons: dict[str, tk.Button] = {
+            "All": btn_all,
+            "High": btn_high,
+            "Today": btn_today,
         }
 
         for btn in self.filter_buttons.values():
             btn.bind(
                 "<Enter>",
-                lambda e, b=btn: b.config(
-                    bg="#45475A"
-                ) if self.filter_mode.get() != b.cget("text") else None
+                lambda e, b=btn: (  # type: ignore[misc]
+                    b.config(bg="#45475A")
+                    if self.filter_mode.get() != b.cget("text")
+                    else None
+                ),
             )
             btn.bind(
                 "<Leave>",
-                lambda e, b=btn: self._update_filter_button_styles()
+                lambda e, b=btn: self._update_filter_button_styles(),  # type: ignore[misc]
             )
 
         self._update_filter_button_styles()
@@ -227,8 +256,7 @@ class KanbanBoard(tk.Frame):
         text_color: str = "#11111B" if ratio > 0.4 else "#CDD6F4"
 
         self.canvas.create_text(
-            width / 2, 17, text=percent_str, fill=text_color,
-            font=("Arial", 9, "bold")
+            width / 2, 17, text=percent_str, fill=text_color, font=("Arial", 9, "bold")
         )
 
     def _setup_board_columns(self) -> None:
@@ -238,13 +266,15 @@ class KanbanBoard(tk.Frame):
 
         for col_name in self.columns:
             col_frame: tk.LabelFrame = tk.LabelFrame(
-                board_container, text=f"  {col_name}  ", bg=config.FRAME_BG,
-                fg=config.TEXT_COLOR, font=("Arial", 11, "bold"), bd=2,
-                relief=tk.GROOVE
+                board_container,
+                text=f"  {col_name}  ",
+                bg=config.FRAME_BG,
+                fg=config.TEXT_COLOR,
+                font=("Arial", 11, "bold"),
+                bd=2,
+                relief=tk.GROOVE,
             )
-            col_frame.pack(
-                side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5
-            )
+            col_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
             self.column_frames[col_name] = col_frame
 
     def _setup_input_panel(self) -> None:
@@ -256,85 +286,123 @@ class KanbanBoard(tk.Frame):
         row1.pack(fill=tk.X, pady=2)
 
         tk.Label(
-            row1, text="Title:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
-            font=("Arial", 9, "bold")
+            row1,
+            text="Title:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(side=tk.LEFT, padx=(0, 2))
 
         self.entry_title: tk.Entry = tk.Entry(
-            row1, width=15, bg="#313244", fg=config.TEXT_COLOR,
-            insertbackground="white"
+            row1, width=15, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white"
         )
         self.entry_title.pack(side=tk.LEFT, padx=5)
 
         tk.Label(
-            row1, text="Due (YYYY-MM-DD):", fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+            row1,
+            text="Due (YYYY-MM-DD):",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(side=tk.LEFT, padx=(5, 2))
 
         self.entry_due: tk.Entry = tk.Entry(
-            row1, width=11, bg="#313244", fg=config.TEXT_COLOR,
-            insertbackground="white"
+            row1, width=11, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white"
         )
         self.entry_due.insert(0, datetime.date.today().strftime("%Y-%m-%d"))
         self.entry_due.pack(side=tk.LEFT, padx=5)
 
         tk.Label(
-            row1, text="Tags:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
-            font=("Arial", 9, "bold")
+            row1,
+            text="Tags:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(side=tk.LEFT, padx=(5, 2))
 
         self.entry_tags: tk.Entry = tk.Entry(
-            row1, width=12, bg="#313244", fg=config.TEXT_COLOR,
-            insertbackground="white"
+            row1, width=12, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white"
         )
         self.entry_tags.insert(0, "Feature")
         self.entry_tags.pack(side=tk.LEFT, padx=5)
 
         tk.Label(
-            row1, text="Priority:", fg=config.TEXT_COLOR, bg=config.FRAME_BG,
-            font=("Arial", 9, "bold")
+            row1,
+            text="Priority:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(side=tk.LEFT, padx=(5, 2))
 
         self.priority_var: tk.IntVar = tk.IntVar(value=1)
         tk.Radiobutton(
-            row1, text="Low", variable=self.priority_var, value=1,
-            bg=config.FRAME_BG, fg=config.TEXT_COLOR, selectcolor=config.BG_COLOR
+            row1,
+            text="Low",
+            variable=self.priority_var,
+            value=1,
+            bg=config.FRAME_BG,
+            fg=config.TEXT_COLOR,
+            selectcolor=config.BG_COLOR,
         ).pack(side=tk.LEFT)
 
         tk.Radiobutton(
-            row1, text="High", variable=self.priority_var, value=2,
-            bg=config.FRAME_BG, fg=config.ACCENT_COLOR,
-            selectcolor=config.BG_COLOR
+            row1,
+            text="High",
+            variable=self.priority_var,
+            value=2,
+            bg=config.FRAME_BG,
+            fg=config.ACCENT_COLOR,
+            selectcolor=config.BG_COLOR,
         ).pack(side=tk.LEFT)
 
         row2: tk.Frame = tk.Frame(panel, bg=config.FRAME_BG)
         row2.pack(fill=tk.X, pady=(6, 2))
 
         btn_add: tk.Button = tk.Button(
-            row2, text="+ Add Card", bg=config.ACCENT_COLOR, fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=self.add_task_card
+            row2,
+            text="+ Add Card",
+            bg=config.ACCENT_COLOR,
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=self.add_task_card,
         )
         btn_add.pack(side=tk.LEFT, padx=2)
 
         btn_timer: tk.Button = tk.Button(
-            row2, text="Focus Timer", bg="#FAB387", fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=self.open_timer_dialog
+            row2,
+            text="Focus Timer",
+            bg="#FAB387",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=self.open_timer_dialog,
         )
         btn_timer.pack(side=tk.LEFT, padx=5)
 
         btn_analytics: tk.Button = tk.Button(
-            row2, text="Analytics", bg="#89B4FA", fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=lambda: AnalyticsWindow(self.parent, self)
+            row2,
+            text="Analytics",
+            bg="#89B4FA",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: AnalyticsWindow(self.parent, self),
         )
         btn_analytics.pack(side=tk.LEFT, padx=5)
 
         btn_clear_done: tk.Button = tk.Button(
-            row2, text="Clear Done", bg="#F38BA8", fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=self.clear_done_tasks
+            row2,
+            text="Clear Done",
+            bg="#F38BA8",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=self.clear_done_tasks,
         )
         btn_clear_done.pack(side=tk.LEFT, padx=5)
 
@@ -347,8 +415,14 @@ class KanbanBoard(tk.Frame):
         self, widget: tk.Widget, default_bg: str, hover_bg: str
     ) -> None:
         """Apply hover color transitions to button widgets."""
-        widget.bind("<Enter>", lambda _e: widget.config(bg=hover_bg))
-        widget.bind("<Leave>", lambda _e: widget.config(bg=default_bg))
+        widget.bind(
+            "<Enter>",
+            lambda _e: widget.config(bg=hover_bg),  # type: ignore[call-arg]
+        )
+        widget.bind(
+            "<Leave>",
+            lambda _e: widget.config(bg=default_bg),  # type: ignore[call-arg]
+        )
 
     def open_timer_dialog(self) -> None:
         """Open focus timer modal window."""
@@ -371,7 +445,10 @@ class KanbanBoard(tk.Frame):
             while remaining > 0 and self._timer_running:
                 mins, secs = divmod(remaining, 60)
                 time_str: str = f"Focus Timer: {mins:02d}:{secs:02d} remaining"
-                self.after(0, lambda t=time_str: self._draw_timer_canvas(t))
+                self.after(
+                    0,
+                    lambda t=time_str: self._draw_timer_canvas(t),  # type: ignore[misc]
+                )
                 time.sleep(1)
                 remaining -= 1
 
@@ -414,20 +491,20 @@ class KanbanBoard(tk.Frame):
         """Export current task list to a CSV file in a background worker thread."""
         filepath: str = filedialog.asksaveasfilename(
             defaultextension=".csv",
-            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
         )
         if not filepath:
             return
 
-        snapshot: List[Tuple[str, str, str, str, str]] = [
+        snapshot: list[tuple[str, str, str, str, str]] = [
             (t.title, t.status, t.priority, t.due_date, ", ".join(t.tags))
             for t in self.task_manager.tasks
         ]
 
         def write_file_task(
-            data: List[Tuple[str, str, str, str, str]], path: str
+            data: list[tuple[str, str, str, str, str]], path: str
         ) -> int:
-            lines: List[str] = ["Title,Status,Priority,DueDate,Tags\n"]
+            lines: list[str] = ["Title,Status,Priority,DueDate,Tags\n"]
             for title, status, priority, due_date, tags in data:
                 clean_title: str = title.replace(",", " ")
                 clean_tags: str = tags.replace(",", ";")
@@ -444,7 +521,7 @@ class KanbanBoard(tk.Frame):
                 msg: str = f"Successfully exported {count} tasks to:\n{filepath}"
                 self.after(0, lambda: messagebox.showinfo("Export Success", msg))
                 EventLogger.log_event("DATA_EXPORTED", filepath, {"count": count})
-            except (IOError, OSError) as err:
+            except OSError as err:
                 LOGGER.error("Background export failed: %s", err)
                 err_msg: str = f"Failed export: {err}"
                 self.after(0, lambda: messagebox.showerror("Export Error", err_msg))
@@ -465,8 +542,13 @@ class KanbanBoard(tk.Frame):
             for task in tasks:
                 if task.status in self.column_frames:
                     self._create_card_widget(
-                        task.task_id, task.title, task.priority,
-                        task.status, task.due_date, task.tags, task.subtasks
+                        task.task_id,
+                        task.title,
+                        task.priority,
+                        task.status,
+                        task.due_date,
+                        task.tags,
+                        task.subtasks,
                     )
 
             due_tasks = self.task_manager.get_due_or_overdue_tasks()
@@ -475,7 +557,10 @@ class KanbanBoard(tk.Frame):
                 extra = f" (+{len(due_tasks) - 3} more)" if len(due_tasks) > 3 else ""
                 send_notification(
                     title="Task Due Alert",
-                    message=f"You have {len(due_tasks)} task(s) due or overdue: {titles}{extra}"
+                    message=(
+                        f"You have {len(due_tasks)} task(s) due or overdue: "
+                        f"{titles}{extra}"
+                    ),
                 )
 
         except (sqlite3.Error, OSError, AttributeError, ValueError) as err:
@@ -491,19 +576,22 @@ class KanbanBoard(tk.Frame):
         title: str,
         priority_text: str,
         due_date: str,
-        tags: List[str]
+        tags: list[str],
     ) -> None:
         """Open modal dialog to modify attributes of an existing task card."""
         dialog: tk.Toplevel = tk.Toplevel(self)
         dialog.title("Edit Task")
         dialog.geometry("340x380")
         dialog.configure(bg=config.FRAME_BG)
-        dialog.transient(self)
+        dialog.transient(self)  # type: ignore[call-overload]
         dialog.grab_set()
 
         tk.Label(
-            dialog, text="Edit Task Title:", fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+            dialog,
+            text="Edit Task Title:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(anchor="w", padx=15, pady=(12, 2))
 
         entry: tk.Entry = tk.Entry(
@@ -513,8 +601,11 @@ class KanbanBoard(tk.Frame):
         entry.pack(fill=tk.X, padx=15, pady=2)
 
         tk.Label(
-            dialog, text="Due Date (YYYY-MM-DD):", fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+            dialog,
+            text="Due Date (YYYY-MM-DD):",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(anchor="w", padx=15, pady=(6, 2))
 
         entry_due: tk.Entry = tk.Entry(
@@ -524,8 +615,11 @@ class KanbanBoard(tk.Frame):
         entry_due.pack(fill=tk.X, padx=15, pady=2)
 
         tk.Label(
-            dialog, text="Tags (comma-separated):", fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+            dialog,
+            text="Tags (comma-separated):",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(anchor="w", padx=15, pady=(6, 2))
 
         entry_tags: tk.Entry = tk.Entry(
@@ -535,13 +629,20 @@ class KanbanBoard(tk.Frame):
         entry_tags.pack(fill=tk.X, padx=15, pady=2)
 
         tk.Label(
-            dialog, text="Subtasks (one per line):", fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG, font=("Arial", 9, "bold")
+            dialog,
+            text="Subtasks (one per line):",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
         ).pack(anchor="w", padx=15, pady=(6, 2))
 
         txt_subtasks: tk.Text = tk.Text(
-            dialog, height=4, bg="#313244", fg=config.TEXT_COLOR,
-            insertbackground="white", font=("Arial", 9)
+            dialog,
+            height=4,
+            bg="#313244",
+            fg=config.TEXT_COLOR,
+            insertbackground="white",
+            font=("Arial", 9),
         )
         if card.task.subtasks:
             sub_str = "\n".join([s.get("title", "") for s in card.task.subtasks])
@@ -553,19 +654,29 @@ class KanbanBoard(tk.Frame):
         prio_frame.pack(fill=tk.X, padx=15, pady=6)
 
         tk.Radiobutton(
-            prio_frame, text="Low", variable=prio_var, value=1,
-            bg=config.FRAME_BG, fg=config.TEXT_COLOR, selectcolor=config.BG_COLOR
+            prio_frame,
+            text="Low",
+            variable=prio_var,
+            value=1,
+            bg=config.FRAME_BG,
+            fg=config.TEXT_COLOR,
+            selectcolor=config.BG_COLOR,
         ).pack(side=tk.LEFT)
 
         tk.Radiobutton(
-            prio_frame, text="High", variable=prio_var, value=2,
-            bg=config.FRAME_BG, fg=config.ACCENT_COLOR, selectcolor=config.BG_COLOR
+            prio_frame,
+            text="High",
+            variable=prio_var,
+            value=2,
+            bg=config.FRAME_BG,
+            fg=config.ACCENT_COLOR,
+            selectcolor=config.BG_COLOR,
         ).pack(side=tk.LEFT)
 
         def save_changes() -> None:
             new_title: str = entry.get().strip()
             new_due: str = entry_due.get().strip()
-            new_tags: List[str] = [
+            new_tags: list[str] = [
                 t.strip() for t in entry_tags.get().split(",") if t.strip()
             ]
 
@@ -573,15 +684,13 @@ class KanbanBoard(tk.Frame):
             existing_map = {
                 s.get("title"): s.get("completed", False) for s in card.task.subtasks
             }
-            new_subtasks: List[Dict[str, Any]] = []
+            new_subtasks: list[dict[str, Any]] = []
             if raw_subtasks:
                 for line in raw_subtasks.split("\n"):
                     st_title = line.strip()
                     if st_title:
                         completed = existing_map.get(st_title, False)
-                        new_subtasks.append(
-                            {"title": st_title, "completed": completed}
-                        )
+                        new_subtasks.append({"title": st_title, "completed": completed})
 
             if not new_title:
                 messagebox.showwarning(
@@ -592,7 +701,7 @@ class KanbanBoard(tk.Frame):
             if new_due and not self._is_valid_date_format(new_due):
                 messagebox.showerror(
                     "Invalid Date",
-                    "Due date must be in YYYY-MM-DD format (e.g., 2026-10-15)."
+                    "Due date must be in YYYY-MM-DD format (e.g., 2026-10-15).",
                 )
                 return
 
@@ -615,15 +724,20 @@ class KanbanBoard(tk.Frame):
                 dialog.destroy()
 
         tk.Button(
-            dialog, text="Save Changes", bg=config.ACCENT_COLOR, fg="#11111B",
-            font=("Arial", 9, "bold"), relief=tk.FLAT, cursor="hand2",
-            command=save_changes
+            dialog,
+            text="Save Changes",
+            bg=config.ACCENT_COLOR,
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=save_changes,
         ).pack(pady=8)
 
     def move_card_vertical(self, card: KanbanCard, direction: int) -> None:
         """Shift task card vertically within its current column frame."""
         col_name: str = card.task.status
-        col_cards: List[KanbanCard] = [
+        col_cards: list[KanbanCard] = [
             c for c in self.all_cards if c.task.status == col_name
         ]
 
@@ -647,10 +761,8 @@ class KanbanBoard(tk.Frame):
             for c in col_cards:
                 c.pack(fill=tk.X, padx=8, pady=5)
 
-            task_dict: Dict[str, Any] = {
-                t.task_id: t for t in self.task_manager.tasks
-            }
-            reordered_tasks: List[Any] = []
+            task_dict: dict[str, Any] = {t.task_id: t for t in self.task_manager.tasks}
+            reordered_tasks: list[Any] = []
             for c in self.all_cards:
                 if c.task.task_id in task_dict:
                     reordered_tasks.append(task_dict[c.task.task_id])
@@ -693,7 +805,7 @@ class KanbanBoard(tk.Frame):
             next_col,
             card.task.due_date,
             card.task.tags,
-            card.task.subtasks
+            card.task.subtasks,
         )
         self.update_progress_bar()
 
@@ -709,8 +821,8 @@ class KanbanBoard(tk.Frame):
         priority_text: str,
         column_name: str,
         due_date: str = "",
-        tags: Optional[List[str]] = None,
-        subtasks: Optional[List[Dict[str, Any]]] = None
+        tags: list[str] | None = None,
+        subtasks: list[dict[str, Any]] | None = None,
     ) -> None:
         """Instantiate card widget and append it to target column container."""
         task = next((t for t in self.task_manager.tasks if t.task_id == task_id), None)
@@ -722,13 +834,11 @@ class KanbanBoard(tk.Frame):
                 status=column_name,
                 due_date=due_date,
                 tags=tags or [],
-                subtasks=subtasks or []
+                subtasks=subtasks or [],
             )
 
         card: KanbanCard = KanbanCard(
-            parent=self.column_frames[column_name],
-            board=self,
-            task=task
+            parent=self.column_frames[column_name], board=self, task=task
         )
         card.pack(fill=tk.X, padx=8, pady=5)
 
@@ -747,10 +857,10 @@ class KanbanBoard(tk.Frame):
                 bg=overdue_bg, highlightbackground="#F38BA8", highlightthickness=1
             )
 
-            def apply_overdue_theme(widget: tk.Widget) -> None:
+            def apply_overdue_theme(widget: tk.Widget | tk.Toplevel) -> None:
                 if not isinstance(widget, (tk.Button, tk.Checkbutton)):
                     try:
-                        widget.config(bg=overdue_bg)
+                        widget.config(bg=overdue_bg)  # type: ignore[call-arg]
                     except tk.TclError:
                         pass
                 elif isinstance(widget, tk.Checkbutton):
@@ -760,7 +870,7 @@ class KanbanBoard(tk.Frame):
                             activebackground=overdue_bg,
                             selectcolor="#5A2329",
                             activeforeground="#F38BA8",
-                            fg=config.TEXT_COLOR
+                            fg=config.TEXT_COLOR,
                         )
                     except tk.TclError:
                         pass
@@ -773,7 +883,8 @@ class KanbanBoard(tk.Frame):
             if hasattr(card, "lbl_due"):
                 card.lbl_due.config(bg="#5A2329", fg="#F38BA8")
         else:
-            def style_normal_checkbuttons(widget: tk.Widget) -> None:
+
+            def style_normal_checkbuttons(widget: tk.Widget | tk.Toplevel) -> None:
                 if isinstance(widget, tk.Checkbutton):
                     try:
                         widget.config(
@@ -781,7 +892,7 @@ class KanbanBoard(tk.Frame):
                             activebackground=config.FRAME_BG,
                             selectcolor="#11111B",
                             activeforeground="#A6E3A1",
-                            fg=config.TEXT_COLOR
+                            fg=config.TEXT_COLOR,
                         )
                     except tk.TclError:
                         pass
@@ -801,7 +912,7 @@ class KanbanBoard(tk.Frame):
                 highlightbackground=original_color, highlightthickness=original_bd
             )
 
-        def bind_hover_recursive(widget: tk.Widget) -> None:
+        def bind_hover_recursive(widget: tk.Widget | tk.Toplevel) -> None:
             """Recursively bind hover events across all child widgets in card."""
             widget.bind("<Enter>", on_enter, add="+")
             widget.bind("<Leave>", on_leave, add="+")
@@ -832,7 +943,7 @@ class KanbanBoard(tk.Frame):
         title: str = self.entry_title.get().strip()
         due_date: str = self.entry_due.get().strip()
         tags_raw: str = self.entry_tags.get().strip()
-        tags: List[str] = [t.strip() for t in tags_raw.split(",") if t.strip()]
+        tags: list[str] = [t.strip() for t in tags_raw.split(",") if t.strip()]
 
         if not title:
             messagebox.showwarning("Validation Error", "Task title cannot be empty!")
@@ -841,22 +952,30 @@ class KanbanBoard(tk.Frame):
         if due_date and not self._is_valid_date_format(due_date):
             messagebox.showerror(
                 "Invalid Date",
-                "Due date must be in YYYY-MM-DD format (e.g., 2026-10-15)."
+                "Due date must be in YYYY-MM-DD format (e.g., 2026-10-15).",
             )
             return
 
         priority_text: str = "HIGH" if self.priority_var.get() == 2 else "LOW"
 
         new_task = self.task_manager.add_task(
-            title=title, priority=priority_text, status="To Do",
-            due_date=due_date, tags=tags
+            title=title,
+            priority=priority_text,
+            status="To Do",
+            due_date=due_date,
+            tags=tags,
         )
         if not self.save_board_state():
             return
 
         self._create_card_widget(
-            new_task.task_id, title, priority_text, "To Do",
-            due_date, tags, new_task.subtasks
+            new_task.task_id,
+            title,
+            priority_text,
+            "To Do",
+            due_date,
+            tags,
+            new_task.subtasks,
         )
         self.update_progress_bar()
         EventLogger.log_event(

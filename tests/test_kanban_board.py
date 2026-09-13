@@ -1,7 +1,8 @@
 """GUI module rendering the Kanban board interface and managing board actions."""
 
 import tkinter as tk
-from typing import Any, Optional
+from typing import Any
+
 from services.task_manager import TaskManager
 
 
@@ -9,10 +10,7 @@ class KanbanBoard(tk.Frame):
     """Main Kanban Board GUI container."""
 
     def __init__(
-        self,
-        master: tk.Widget,
-        task_manager: Optional[TaskManager] = None,
-        **kwargs: Any
+        self, master: tk.Widget, task_manager: TaskManager | None = None, **kwargs: Any
     ) -> None:
         """Initialize the Kanban board interface and task manager backend."""
         super().__init__(master, **kwargs)

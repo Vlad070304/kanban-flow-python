@@ -3,11 +3,11 @@ services/event_logger.py
 Service for appending, reading, and aggregating JSON event logs.
 """
 
-from collections import defaultdict
 import datetime
 import json
 import os
-from typing import Any, Dict, List
+from collections import defaultdict
+from typing import Any, cast
 
 
 class EventLogger:
@@ -16,13 +16,13 @@ class EventLogger:
     LOG_FILE = "event_log.json"
 
     @classmethod
-    def log_event(cls, event_type: str, target: str, details: Dict[str, Any]):
+    def log_event(cls, event_type: str, target: str, details: dict[str, Any]) -> None:
         """Appends a timestamped event entry to the log file."""
         entry = {
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "event": event_type,
             "target": target,
-            "details": details
+            "details": details,
         }
 
         logs = cls.read_logs()
@@ -31,29 +31,27 @@ class EventLogger:
         try:
             with open(cls.LOG_FILE, "w", encoding="utf-8") as file:
                 json.dump(logs, file, indent=4)
-        except (IOError, TypeError) as err:
+        except (OSError, TypeError) as err:
             print(f"Error saving log event: {err}")
 
     @classmethod
-    def read_logs(cls) -> List[Dict[str, Any]]:
+    def read_logs(cls) -> list[dict[str, Any]]:
         """Reads and returns all logged events."""
         if not os.path.exists(cls.LOG_FILE):
             return []
 
         try:
-            with open(cls.LOG_FILE, "r", encoding="utf-8") as file:
-                return json.load(file)
-        except (IOError, json.JSONDecodeError):
+            with open(cls.LOG_FILE, encoding="utf-8") as file:
+                return cast(list[dict[str, Any]], json.load(file))
+        except (OSError, json.JSONDecodeError):
             return []
 
     @classmethod
-    def get_analytics_summary(cls) -> Dict[str, Any]:
-        """Aggregates task completions, focus time, and daily trend metrics from event logs."""
+    def get_analytics_summary(cls) -> dict[str, Any]:
+        """Aggregate task completions, focus time, and daily trend metrics."""
         logs = cls.read_logs()
 
-        completed_tasks = [
-            log for log in logs if log.get("event") == "TASK_COMPLETED"
-        ]
+        completed_tasks = [log for log in logs if log.get("event") == "TASK_COMPLETED"]
         completed_count = len(completed_tasks)
 
         focus_sessions = [
@@ -66,8 +64,8 @@ class EventLogger:
             for session in focus_sessions
         )
 
-        daily_tasks = defaultdict(int)
-        daily_focus = defaultdict(int)
+        daily_tasks: defaultdict[str, int] = defaultdict(int)
+        daily_focus: defaultdict[str, int] = defaultdict(int)
 
         for log in logs:
             ts_str = log.get("timestamp", "")
@@ -87,5 +85,5 @@ class EventLogger:
             "total_focus_minutes": total_focus_minutes,
             "daily_tasks": daily_tasks,
             "daily_focus": daily_focus,
-            "logs": logs
+            "logs": logs,
         }

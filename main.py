@@ -4,10 +4,11 @@ Application entry point initializing the main window interface and menu componen
 """
 
 import tkinter as tk
+
 from gui.main_window import MainWindow
 
 
-def main():
+def main() -> None:
     """Instantiates and launches the main application loop."""
     root = tk.Tk()
     _app = MainWindow(root)

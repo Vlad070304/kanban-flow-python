@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class Task:
@@ -14,9 +14,9 @@ class Task:
         priority: str = "LOW",
         status: str = "To Do",
         due_date: str = "",
-        tags: Optional[List[str]] = None,
-        subtasks: Optional[List[Dict[str, Any]]] = None,
-        task_id: Optional[str] = None
+        tags: list[str] | None = None,
+        subtasks: list[dict[str, Any]] | None = None,
+        task_id: str | None = None,
     ) -> None:
         """Initialize a new Task instance."""
         self.task_id: str = task_id or str(uuid.uuid4())
@@ -24,8 +24,8 @@ class Task:
         self.priority: str = priority
         self.status: str = status
         self.due_date: str = due_date
-        self.tags: List[str] = tags if tags is not None else []
-        self.subtasks: List[Dict[str, Any]] = subtasks if subtasks is not None else []
+        self.tags: list[str] = tags if tags is not None else []
+        self.subtasks: list[dict[str, Any]] = subtasks if subtasks is not None else []
 
     def mark_completed(self) -> None:
         """Mark task status as Done and set subtasks to completed."""
@@ -33,7 +33,7 @@ class Task:
         for subtask in self.subtasks:
             subtask["completed"] = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert task instance attributes to a dictionary payload."""
         return {
             "task_id": self.task_id,
@@ -42,11 +42,11 @@ class Task:
             "status": self.status,
             "due_date": self.due_date,
             "tags": self.tags,
-            "subtasks": self.subtasks
+            "subtasks": self.subtasks,
         }
 
-    def to_db_row(self) -> Tuple[str, str, str, str, str, str, str]:
-        """Convert task instance attributes to an SQL row tuple for database insertion."""
+    def to_db_row(self) -> tuple[str, str, str, str, str, str, str]:
+        """Convert task attributes to an SQL row tuple for database insertion."""
         tags_str: str = ",".join(self.tags)
         subtasks_json: str = json.dumps(self.subtasks)
         return (
@@ -56,11 +56,11 @@ class Task:
             self.status,
             self.due_date,
             tags_str,
-            subtasks_json
+            subtasks_json,
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Task":
+    def from_dict(cls, data: dict[str, Any]) -> "Task":
         """Instantiate a Task instance from a dictionary payload."""
         return cls(
             task_id=data.get("task_id"),
@@ -69,19 +69,25 @@ class Task:
             status=data.get("status", "To Do"),
             due_date=data.get("due_date", ""),
             tags=data.get("tags", []),
-            subtasks=data.get("subtasks", [])
+            subtasks=data.get("subtasks", []),
         )
 
     @classmethod
-    def from_db_row(cls, row: Tuple[Any, ...]) -> "Task":
+    def from_db_row(cls, row: tuple[Any, ...]) -> "Task":
         """Instantiate a Task instance directly from an SQL database query row."""
-        task_id, title, priority, status, due_date = row[0], row[1], row[2], row[3], row[4]
+        task_id, title, priority, status, due_date = (
+            row[0],
+            row[1],
+            row[2],
+            row[3],
+            row[4],
+        )
 
-        tags: List[str] = []
+        tags: list[str] = []
         if len(row) > 5 and row[5]:
             tags = [t.strip() for t in str(row[5]).split(",") if t.strip()]
 
-        subtasks: List[Dict[str, Any]] = []
+        subtasks: list[dict[str, Any]] = []
         if len(row) > 6 and row[6]:
             try:
                 subtasks = json.loads(row[6])
@@ -95,5 +101,5 @@ class Task:
             status=str(status),
             due_date=str(due_date) if due_date else "",
             tags=tags,
-            subtasks=subtasks
+            subtasks=subtasks,
         )

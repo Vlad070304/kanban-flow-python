@@ -15,7 +15,9 @@ class TestTaskModel(unittest.TestCase):
 
     def test_task_creation_default_values(self) -> None:
         """Verifies task creation requires task_id and assigns default attributes."""
-        task = Task(task_id="t-001", title="Default Task", priority="LOW", status="To Do")
+        task = Task(
+            task_id="t-001", title="Default Task", priority="LOW", status="To Do"
+        )
         self.assertEqual(task.title, "Default Task")
         self.assertEqual(task.status, "To Do")
 
@@ -27,7 +29,7 @@ class TestTaskModel(unittest.TestCase):
             priority="HIGH",
             status="In Progress",
             due_date="2026-10-01",
-            tags=["urgent", "db"]
+            tags=["urgent", "db"],
         )
         row = original.to_db_row()
         restored = Task.from_db_row(row)
