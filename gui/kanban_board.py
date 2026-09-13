@@ -17,7 +17,7 @@ from gui.dialogs.focus_timer_dialog import FocusTimerDialog
 from gui.widgets.kanban_card import KanbanCard
 from models.task import Task
 from services.event_logger import EventLogger
-from services.notification_service import send_notification
+from services.notification_service import notify_due_tasks, send_notification
 from services.task_manager import TaskManager
 
 logging.basicConfig(
@@ -50,6 +50,7 @@ class KanbanBoard(tk.Frame):
         self._timer_running: bool = False
         self._dragged_card: KanbanCard | None = None
         self._drag_hover_column: str | None = None
+        self._reminder_interval_ms: int = 15 * 60 * 1000
 
         self._setup_filter_toolbar()
         self._setup_canvas_metric()
@@ -57,6 +58,7 @@ class KanbanBoard(tk.Frame):
         self._setup_input_panel()
         self._bind_keyboard_events()
         self.load_board_data()
+        self._schedule_task_reminders()
 
     def _is_valid_date_format(self, date_str: str) -> bool:
         """Validate if provided date string complies with YYYY-MM-DD pattern."""
@@ -581,17 +583,7 @@ class KanbanBoard(tk.Frame):
                         task.subtasks,
                     )
 
-            due_tasks = self.task_manager.get_due_or_overdue_tasks()
-            if due_tasks:
-                titles = ", ".join([t.title for t in due_tasks[:3]])
-                extra = f" (+{len(due_tasks) - 3} more)" if len(due_tasks) > 3 else ""
-                send_notification(
-                    title="Task Due Alert",
-                    message=(
-                        f"You have {len(due_tasks)} task(s) due or overdue: "
-                        f"{titles}{extra}"
-                    ),
-                )
+            self._notify_due_tasks()
 
         except (sqlite3.Error, OSError, AttributeError, ValueError) as err:
             LOGGER.error("Failed to load task data from file: %s", err)
@@ -599,6 +591,19 @@ class KanbanBoard(tk.Frame):
                 "Load Error", f"Could not load saved task data:\n{err}"
             )
         self.update_progress_bar()
+
+    def _schedule_task_reminders(self) -> None:
+        """Check due tasks periodically while the board window is open."""
+        self.after(self._reminder_interval_ms, self._run_task_reminder_check)
+
+    def _run_task_reminder_check(self) -> None:
+        """Notify about newly due or overdue tasks and schedule the next check."""
+        self._notify_due_tasks()
+        self._schedule_task_reminders()
+
+    def _notify_due_tasks(self) -> None:
+        """Send deduplicated native reminders for due or overdue tasks."""
+        notify_due_tasks(self.task_manager.get_due_or_overdue_tasks())
 
     def open_edit_dialog(
         self,
