@@ -163,6 +163,18 @@ class KanbanCard(tk.Frame):
             if not isinstance(widget, (tk.Button, tk.Checkbutton)):
                 widget.bind("<Double-Button-1>", lambda _e: self._trigger_edit())
                 widget.bind("<Button-3>", self._show_context_menu)
+                widget.bind(
+                    "<ButtonPress-1>",
+                    lambda event: self.board.start_card_drag(self, event),
+                )
+                widget.bind(
+                    "<B1-Motion>",
+                    lambda event: self.board.drag_card(self, event),
+                )
+                widget.bind(
+                    "<ButtonRelease-1>",
+                    lambda event: self.board.drop_card(self, event),
+                )
 
     def _show_context_menu(self, event: tk.Event) -> None:
         """Display right-click context menu for editing options."""

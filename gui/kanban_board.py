@@ -48,6 +48,8 @@ class KanbanBoard(tk.Frame):
         self.total_cards: int = 0
         self.done_cards: int = 0
         self._timer_running: bool = False
+        self._dragged_card: KanbanCard | None = None
+        self._drag_hover_column: str | None = None
 
         self._setup_filter_toolbar()
         self._setup_canvas_metric()
@@ -207,7 +209,11 @@ class KanbanBoard(tk.Frame):
             elif mode == "Today":
                 matches_mode = due_date == today_str
 
-            if matches_query and matches_mode:
+            matches_tags: bool = not query or any(
+                query in tag.lower() for tag in card.task.tags
+            )
+
+            if matches_query and matches_tags and matches_mode:
                 if not card.winfo_ismapped():
                     card.pack(fill=tk.X, padx=8, pady=5)
             else:
@@ -276,6 +282,18 @@ class KanbanBoard(tk.Frame):
             )
             col_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
             self.column_frames[col_name] = col_frame
+            col_frame.bind(
+                "<Enter>",
+                lambda _event, name=col_name: self._set_drag_column(name),  # type: ignore[misc]
+            )
+            col_frame.bind(
+                "<Leave>",
+                lambda _event: self._clear_drag_column(),
+            )
+            col_frame.bind(
+                "<ButtonRelease-1>",
+                lambda event, name=col_name: self._drop_card(event, name),  # type: ignore[misc]
+            )
 
     def _setup_input_panel(self) -> None:
         """Construct bottom input panel for adding cards and triggering dialogs."""
@@ -410,6 +428,18 @@ class KanbanBoard(tk.Frame):
         self._apply_hover_effect(btn_timer, "#FAB387", config.BTN_HOVER_TIMER)
         self._apply_hover_effect(btn_analytics, "#89B4FA", "#B4BEFE")
         self._apply_hover_effect(btn_clear_done, "#F38BA8", config.BTN_HOVER_CLEAR)
+
+        self.theme_button = tk.Button(
+            row2,
+            text="Light Theme",
+            bg="#313244",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=self.toggle_theme,
+        )
+        self.theme_button.pack(side=tk.RIGHT, padx=5)
 
     def _apply_hover_effect(
         self, widget: tk.Widget, default_bg: str, hover_bg: str
@@ -807,12 +837,130 @@ class KanbanBoard(tk.Frame):
             card.task.tags,
             card.task.subtasks,
         )
-        self.update_progress_bar()
 
         if next_col == "Done":
             EventLogger.log_event(
                 "TASK_COMPLETED", card.task.title, {"priority": card.task.priority}
             )
+
+    def _set_drag_column(self, column_name: str | None) -> None:
+        """Track the column currently under a dragged card."""
+        if self._dragged_card is None or column_name is None:
+            return
+        self._drag_hover_column = column_name
+        self.column_frames[column_name].configure(
+            highlightbackground=config.ACCENT_COLOR, highlightthickness=2
+        )
+
+    def _clear_drag_column(self) -> None:
+        """Clear the active drag target after leaving a column."""
+        if self._drag_hover_column is not None:
+            frame = self.column_frames[self._drag_hover_column]
+            frame.configure(highlightthickness=0)
+            self._drag_hover_column = None
+
+    def start_card_drag(self, card: KanbanCard, event: tk.Event) -> None:
+        """Start dragging a card after the pointer is pressed on it."""
+        self._dragged_card = card
+        card.configure(cursor="hand2")
+        self._set_drag_column(self._column_at(event.x_root, event.y_root))
+
+    def drag_card(self, _card: KanbanCard, event: tk.Event) -> None:
+        """Update the drop target while a card is being dragged."""
+        column = self._column_at(event.x_root, event.y_root)
+        self._clear_drag_column()
+        self._set_drag_column(column)
+
+    def drop_card(self, card: KanbanCard, event: tk.Event) -> None:
+        """Move a dragged card to the column under the pointer."""
+        column = self._column_at(event.x_root, event.y_root)
+        self._clear_drag_column()
+        self._dragged_card = None
+        card.configure(cursor="")
+        if column is not None and column != card.task.status:
+            self.move_card_to_column(card, column)
+
+    def _drop_card(self, event: tk.Event, _column_name: str) -> None:
+        """Handle releases received directly by a column drop target."""
+        if self._dragged_card is not None:
+            self.drop_card(self._dragged_card, event)
+        else:
+            self._clear_drag_column()
+
+    def _column_at(self, root_x: int, root_y: int) -> str | None:
+        """Return the board column containing screen coordinates."""
+        for name, frame in self.column_frames.items():
+            left = frame.winfo_rootx()
+            top = frame.winfo_rooty()
+            right = left + frame.winfo_width()
+            bottom = top + frame.winfo_height()
+            if left <= root_x <= right and top <= root_y <= bottom:
+                return name
+        return None
+
+    def move_card_to_column(self, card: KanbanCard, column_name: str) -> None:
+        """Move a card to a target column and persist the status change."""
+        if column_name not in self.columns or column_name == card.task.status:
+            return
+        card.task.status = column_name
+        if column_name == "Done":
+            card.task.mark_completed()
+        self.save_board_state()
+        self._rebuild_board_cards()
+
+    def _rebuild_board_cards(self) -> None:
+        """Rebuild card widgets after a drag-and-drop status change."""
+        for card in self.all_cards:
+            card.destroy()
+        self.all_cards.clear()
+        for task in self.task_manager.tasks:
+            if task.status in self.column_frames:
+                self._create_card_widget(
+                    task.task_id,
+                    task.title,
+                    task.priority,
+                    task.status,
+                    task.due_date,
+                    task.tags,
+                    task.subtasks,
+                )
+        self.update_progress_bar()
+
+    def toggle_theme(self) -> None:
+        """Switch between the dark and light application palettes."""
+        config.set_theme("light" if config.THEME_NAME == "dark" else "dark")
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        """Apply the selected palette to existing board widgets."""
+        self._apply_theme_recursive(self)
+        self.theme_button.configure(
+            text="Dark Theme" if config.THEME_NAME == "light" else "Light Theme"
+        )
+        self.filter_tasks()
+        self.update_progress_bar()
+
+    def _apply_theme_recursive(self, widget: tk.Misc) -> None:
+        """Update compatible widget colors recursively."""
+        replacements = {
+            "#1E1E2E": config.BG_COLOR,
+            "#EFF1F5": config.BG_COLOR,
+            "#181825": config.FRAME_BG,
+            "#E6E9EF": config.FRAME_BG,
+            "#313244": config.INPUT_BG,
+            "#FFFFFF": config.CARD_BG,
+            "#CDD6F4": config.TEXT_COLOR,
+            "#4C4F69": config.TEXT_COLOR,
+        }
+        for option in ("bg", "background", "fg", "foreground", "insertbackground"):
+            try:
+                value = widget.cget(option)
+                if value in replacements:
+                    widget.configure(**{option: replacements[value]})
+            except (tk.TclError, TypeError):
+                pass
+        for child in widget.winfo_children():
+            self._apply_theme_recursive(child)
 
     def _create_card_widget(
         self,
