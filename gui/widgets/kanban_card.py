@@ -189,14 +189,8 @@ class KanbanCard(tk.Frame):
         menu.post(event.x_root, event.y_root)
 
     def _trigger_edit(self) -> None:
-        """Pass task parameters to board edit dialog."""
-        self.board.open_edit_dialog(
-            self,
-            self.task.title,
-            self.task.priority,
-            self.task.due_date,
-            self.task.tags,
-        )
+        """Open the board edit dialog for this card."""
+        self.board.open_edit_dialog(self)
 
     def _toggle_subtask(self, index: int, var: tk.BooleanVar) -> None:
         """Update subtask completion state and persist board state."""

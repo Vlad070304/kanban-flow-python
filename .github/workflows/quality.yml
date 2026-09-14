@@ -34,10 +34,13 @@ jobs:
         run: python -m mypy
 
       - name: Run unit tests
-        run: python -m coverage run --source=models,services -m unittest discover -s tests -p "test_*.py" -v
+        run: python -m coverage run --source=models,services,gui -m unittest discover -s tests -p "test_*.py" -v
 
-      - name: Report test coverage
-        run: python -m coverage report --show-missing --fail-under=75
+      - name: Report model and service coverage
+        run: python -m coverage report --show-missing --include="models/*,services/*" --fail-under=75
+
+      - name: Report GUI coverage
+        run: python -m coverage report --show-missing --include="gui/*" --fail-under=20
 
       - name: Generate coverage artifact
         run: python -m coverage xml

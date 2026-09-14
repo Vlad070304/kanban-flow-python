@@ -13,6 +13,7 @@ from typing import Any
 
 import config
 from gui.analytics import AnalyticsWindow
+from gui.dialogs.edit_task_dialog import EditTaskDialog
 from gui.dialogs.focus_timer_dialog import FocusTimerDialog
 from gui.widgets.kanban_card import KanbanCard
 from models.task import Task
@@ -61,7 +62,7 @@ class KanbanBoard(tk.Frame):
         self.load_board_data()
         self._schedule_task_reminders()
 
-    def _is_valid_date_format(self, date_str: str) -> bool:
+    def is_valid_date_format(self, date_str: str) -> bool:
         """Validate if provided date string complies with YYYY-MM-DD pattern."""
         pattern = r"^\d{4}-\d{2}-\d{2}$"
         if not re.match(pattern, date_str):
@@ -176,18 +177,18 @@ class KanbanBoard(tk.Frame):
             )
             btn.bind(
                 "<Leave>",
-                lambda e, b=btn: self._update_filter_button_styles(),  # type: ignore[misc]
+                lambda _e: self.update_filter_button_styles(),
             )
 
-        self._update_filter_button_styles()
+        self.update_filter_button_styles()
 
     def set_filter_mode(self, mode: str) -> None:
         """Set active filter mode and trigger task update."""
         self.filter_mode.set(mode)
-        self._update_filter_button_styles()
+        self.update_filter_button_styles()
         self.filter_tasks()
 
-    def _update_filter_button_styles(self) -> None:
+    def update_filter_button_styles(self) -> None:
         """Update filter button styles based on current filter mode."""
         active_mode: str = self.filter_mode.get()
         for mode, btn in self.filter_buttons.items():
@@ -579,7 +580,7 @@ class KanbanBoard(tk.Frame):
             tasks = self.task_manager.load_from_file()
             for task in tasks:
                 if task.status in self.column_frames:
-                    self._create_card_widget(
+                    self.create_card_widget(
                         task.task_id,
                         task.title,
                         task.priority,
@@ -620,166 +621,9 @@ class KanbanBoard(tk.Frame):
     def open_edit_dialog(
         self,
         card: KanbanCard,
-        title: str,
-        priority_text: str,
-        due_date: str,
-        tags: list[str],
     ) -> None:
-        """Open modal dialog to modify attributes of an existing task card."""
-        dialog: tk.Toplevel = tk.Toplevel(self)
-        dialog.title("Edit Task")
-        dialog.geometry("340x380")
-        dialog.configure(bg=config.FRAME_BG)
-        dialog.transient(self)  # type: ignore[call-overload]
-        dialog.grab_set()
-
-        tk.Label(
-            dialog,
-            text="Edit Task Title:",
-            fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG,
-            font=("Arial", 9, "bold"),
-        ).pack(anchor="w", padx=15, pady=(12, 2))
-
-        entry: tk.Entry = tk.Entry(
-            dialog, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white"
-        )
-        entry.insert(0, title)
-        entry.pack(fill=tk.X, padx=15, pady=2)
-
-        tk.Label(
-            dialog,
-            text="Due Date (YYYY-MM-DD):",
-            fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG,
-            font=("Arial", 9, "bold"),
-        ).pack(anchor="w", padx=15, pady=(6, 2))
-
-        entry_due: tk.Entry = tk.Entry(
-            dialog, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white"
-        )
-        entry_due.insert(0, due_date)
-        entry_due.pack(fill=tk.X, padx=15, pady=2)
-
-        tk.Label(
-            dialog,
-            text="Tags (comma-separated):",
-            fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG,
-            font=("Arial", 9, "bold"),
-        ).pack(anchor="w", padx=15, pady=(6, 2))
-
-        entry_tags: tk.Entry = tk.Entry(
-            dialog, bg="#313244", fg=config.TEXT_COLOR, insertbackground="white"
-        )
-        entry_tags.insert(0, ", ".join(tags))
-        entry_tags.pack(fill=tk.X, padx=15, pady=2)
-
-        tk.Label(
-            dialog,
-            text="Subtasks (one per line):",
-            fg=config.TEXT_COLOR,
-            bg=config.FRAME_BG,
-            font=("Arial", 9, "bold"),
-        ).pack(anchor="w", padx=15, pady=(6, 2))
-
-        txt_subtasks: tk.Text = tk.Text(
-            dialog,
-            height=4,
-            bg="#313244",
-            fg=config.TEXT_COLOR,
-            insertbackground="white",
-            font=("Arial", 9),
-        )
-        if card.task.subtasks:
-            sub_str = "\n".join([s.get("title", "") for s in card.task.subtasks])
-            txt_subtasks.insert("1.0", sub_str)
-        txt_subtasks.pack(fill=tk.X, padx=15, pady=2)
-
-        prio_var: tk.IntVar = tk.IntVar(value=2 if priority_text == "HIGH" else 1)
-        prio_frame: tk.Frame = tk.Frame(dialog, bg=config.FRAME_BG)
-        prio_frame.pack(fill=tk.X, padx=15, pady=6)
-
-        tk.Radiobutton(
-            prio_frame,
-            text="Low",
-            variable=prio_var,
-            value=1,
-            bg=config.FRAME_BG,
-            fg=config.TEXT_COLOR,
-            selectcolor=config.BG_COLOR,
-        ).pack(side=tk.LEFT)
-
-        tk.Radiobutton(
-            prio_frame,
-            text="High",
-            variable=prio_var,
-            value=2,
-            bg=config.FRAME_BG,
-            fg=config.ACCENT_COLOR,
-            selectcolor=config.BG_COLOR,
-        ).pack(side=tk.LEFT)
-
-        def save_changes() -> None:
-            new_title: str = entry.get().strip()
-            new_due: str = entry_due.get().strip()
-            new_tags: list[str] = [
-                t.strip() for t in entry_tags.get().split(",") if t.strip()
-            ]
-
-            raw_subtasks: str = txt_subtasks.get("1.0", tk.END).strip()
-            existing_map = {
-                s.get("title"): s.get("completed", False) for s in card.task.subtasks
-            }
-            new_subtasks: list[dict[str, Any]] = []
-            if raw_subtasks:
-                for line in raw_subtasks.split("\n"):
-                    st_title = line.strip()
-                    if st_title:
-                        completed = existing_map.get(st_title, False)
-                        new_subtasks.append({"title": st_title, "completed": completed})
-
-            if not new_title:
-                messagebox.showwarning(
-                    "Validation Error", "Task title cannot be empty!"
-                )
-                return
-
-            if new_due and not self._is_valid_date_format(new_due):
-                messagebox.showerror(
-                    "Invalid Date",
-                    "Due date must be in YYYY-MM-DD format (e.g., 2026-10-15).",
-                )
-                return
-
-            new_prio: str = "HIGH" if prio_var.get() == 2 else "LOW"
-            card.task.title = new_title
-            card.task.priority = new_prio
-            card.task.due_date = new_due
-            card.task.tags = new_tags
-            card.task.subtasks = new_subtasks
-
-            col_name: str = card.task.status
-            card_id: str = card.task.task_id
-            if card in self.all_cards:
-                self.all_cards.remove(card)
-            card.destroy()
-            self._create_card_widget(
-                card_id, new_title, new_prio, col_name, new_due, new_tags, new_subtasks
-            )
-            if self.save_board_state():
-                dialog.destroy()
-
-        tk.Button(
-            dialog,
-            text="Save Changes",
-            bg=config.ACCENT_COLOR,
-            fg="#11111B",
-            font=("Arial", 9, "bold"),
-            relief=tk.FLAT,
-            cursor="hand2",
-            command=save_changes,
-        ).pack(pady=8)
+        """Open the reusable task-editing dialog."""
+        EditTaskDialog(self.parent, self, card)
 
     def move_card_vertical(self, card: KanbanCard, direction: int) -> None:
         """Shift task card vertically within its current column frame."""
@@ -845,7 +689,7 @@ class KanbanBoard(tk.Frame):
             self.all_cards.remove(card)
         card.destroy()
 
-        self._create_card_widget(
+        self.create_card_widget(
             card.task.task_id,
             card.task.title,
             card.task.priority,
@@ -923,16 +767,16 @@ class KanbanBoard(tk.Frame):
         if column_name == "Done":
             card.task.mark_completed()
         self.save_board_state()
-        self._rebuild_board_cards()
+        self.rebuild_board_cards()
 
-    def _rebuild_board_cards(self) -> None:
+    def rebuild_board_cards(self) -> None:
         """Rebuild card widgets after a drag-and-drop status change."""
         for card in self.all_cards:
             card.destroy()
         self.all_cards.clear()
         for task in self.task_manager.tasks:
             if task.status in self.column_frames:
-                self._create_card_widget(
+                self.create_card_widget(
                     task.task_id,
                     task.title,
                     task.priority,
@@ -979,7 +823,7 @@ class KanbanBoard(tk.Frame):
         for child in widget.winfo_children():
             self._apply_theme_recursive(child)
 
-    def _create_card_widget(
+    def create_card_widget(
         self,
         task_id: str,
         title: str,
@@ -1114,7 +958,7 @@ class KanbanBoard(tk.Frame):
             messagebox.showwarning("Validation Error", "Task title cannot be empty!")
             return
 
-        if due_date and not self._is_valid_date_format(due_date):
+        if due_date and not self.is_valid_date_format(due_date):
             messagebox.showerror(
                 "Invalid Date",
                 "Due date must be in YYYY-MM-DD format (e.g., 2026-10-15).",
@@ -1133,7 +977,7 @@ class KanbanBoard(tk.Frame):
         if not self.save_board_state():
             return
 
-        self._create_card_widget(
+        self.create_card_widget(
             new_task.task_id,
             title,
             priority_text,

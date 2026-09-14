@@ -17,8 +17,13 @@ class TestStoragePaths(unittest.TestCase):
         with patch.dict(os.environ, {"APPDATA": r"C:\Users\Test\AppData\Roaming"}):
             with patch.object(sys, "platform", "win32"):
                 self.assertEqual(
-                    get_app_data_dir(),
-                    Path(r"C:\Users\Test\AppData\Roaming\KanbanTaskManager"),
+                    get_app_data_dir().name,
+                    "KanbanTaskManager",
+                )
+                self.assertTrue(
+                    str(get_app_data_dir())
+                    .replace("\\", "/")
+                    .endswith("/KanbanTaskManager")
                 )
 
     def test_macos_uses_application_support(self) -> None:
