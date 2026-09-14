@@ -3,6 +3,7 @@ tests/test_task_manager.py
 Unit tests for Task model serialization and SQLite TaskManager service operations.
 """
 
+import json
 import os
 import sqlite3
 import tempfile
@@ -120,6 +121,41 @@ class TestTaskManagerSQLite(unittest.TestCase):
 
             self.assertFalse(self.manager.restore_backup(backup_path))
             self.assertEqual(self.manager.tasks, [])
+
+    def test_restore_backup_replaces_existing_tasks(self) -> None:
+        """Verifies restoring a backup removes tasks absent from the backup."""
+        stale_task = self.manager.add_task("Stale task")
+        restored_task = Task(task_id="restored-1", title="Restored task")
+
+        with tempfile.TemporaryDirectory() as directory:
+            backup_path = os.path.join(directory, "tasks.json")
+            with open(backup_path, "w", encoding="utf-8") as file:
+                json.dump([restored_task.to_dict()], file)
+
+            self.assertTrue(self.manager.restore_backup(backup_path))
+
+        self.assertEqual([task.task_id for task in self.manager.tasks], ["restored-1"])
+        self.assertNotEqual(self.manager.tasks[0].task_id, stale_task.task_id)
+
+        loaded = TaskManager(db_path=self.TEST_DB).load_from_file()
+        self.assertEqual([task.task_id for task in loaded], ["restored-1"])
+
+    def test_restore_backup_rejects_invalid_structure_without_changes(self) -> None:
+        """Verifies malformed backup data leaves memory and storage unchanged."""
+        existing_task = self.manager.add_task("Existing task")
+
+        with tempfile.TemporaryDirectory() as directory:
+            backup_path = os.path.join(directory, "invalid-structure.json")
+            with open(backup_path, "w", encoding="utf-8") as file:
+                json.dump({"tasks": []}, file)
+
+            self.assertFalse(self.manager.restore_backup(backup_path))
+
+        self.assertEqual(
+            [task.task_id for task in self.manager.tasks], [existing_task.task_id]
+        )
+        loaded = TaskManager(db_path=self.TEST_DB).load_from_file()
+        self.assertEqual([task.task_id for task in loaded], [existing_task.task_id])
 
     def test_migrates_legacy_database_and_records_version(self) -> None:
         """Verifies legacy databases receive the subtasks migration once."""

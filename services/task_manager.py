@@ -189,12 +189,31 @@ class TaskManager:
             return False
 
     def restore_backup(self, source_filepath: str) -> bool:
-        """Restore tasks from JSON and persist them to SQLite storage."""
+        """Replace current tasks with a validated JSON backup atomically."""
         try:
             with open(source_filepath, encoding="utf-8") as file:
                 data = json.load(file)
-            self.tasks = [Task.from_dict(item) for item in data]
-            self.save_to_file()
+
+            if not isinstance(data, list) or not all(
+                isinstance(item, dict) for item in data
+            ):
+                return False
+
+            restored_tasks = [Task.from_dict(item) for item in data]
+            query = """
+            INSERT INTO tasks (
+                task_id, title, priority, status, due_date, tags, subtasks
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+            """
+            with closing(self._get_connection()) as conn:
+                with conn:
+                    conn.execute("DELETE FROM tasks;")
+                    conn.executemany(
+                        query, (task.to_db_row() for task in restored_tasks)
+                    )
+
+            self.tasks = restored_tasks
             return True
-        except (OSError, json.JSONDecodeError, KeyError):
+        except (OSError, json.JSONDecodeError, sqlite3.Error, TypeError, ValueError):
             return False
