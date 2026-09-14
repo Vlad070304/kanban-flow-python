@@ -17,7 +17,7 @@ class FocusTimerDialog(tk.Toplevel):
         super().__init__(parent)
         self.board: Any = board_ref
         self.title("Focus Timer & Pomodoro")
-        self.geometry("340x240")
+        self.geometry("380x290")
         self.configure(bg=config.FRAME_BG)
         self.resizable(False, False)
         self.transient(parent)  # type: ignore[call-overload]
@@ -40,6 +40,33 @@ class FocusTimerDialog(tk.Toplevel):
             bg=config.FRAME_BG,
             font=("Arial", 9),
         ).pack(pady=(0, 10))
+
+        task_frame: tk.Frame = tk.Frame(self, bg=config.FRAME_BG)
+        task_frame.pack(fill=tk.X, padx=20, pady=(0, 8))
+        tk.Label(
+            task_frame,
+            text="Task:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        self.task_var = tk.StringVar(value="No task")
+        task_values = ["No task"] + [
+            f"{task.title} ({task.task_id})"
+            for task in self.board.task_manager.tasks
+            if task.status != "Done"
+        ]
+        self.task_ids: dict[str, str | None] = {"No task": None}
+        self.task_ids.update(
+            {
+                f"{task.title} ({task.task_id})": task.task_id
+                for task in self.board.task_manager.tasks
+                if task.status != "Done"
+            }
+        )
+        tk.OptionMenu(task_frame, self.task_var, *task_values).pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
 
         preset_frame: tk.Frame = tk.Frame(self, bg=config.FRAME_BG)
         preset_frame.pack(fill=tk.X, padx=20, pady=5)
@@ -128,7 +155,7 @@ class FocusTimerDialog(tk.Toplevel):
 
     def _start_session(self, minutes: int) -> None:
         """Starts a focus session with specified minutes."""
-        self.board.start_focus_timer(minutes)
+        self.board.start_focus_timer(minutes, self.task_ids[self.task_var.get()])
         self.destroy()
 
     def _start_custom(self) -> None:

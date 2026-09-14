@@ -5,8 +5,6 @@ import datetime
 import logging
 import re
 import sqlite3
-import threading
-import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from typing import Any
@@ -14,11 +12,11 @@ from typing import Any
 import config
 from gui.analytics import AnalyticsWindow
 from gui.dialogs.edit_task_dialog import EditTaskDialog
-from gui.dialogs.focus_timer_dialog import FocusTimerDialog
+from gui.focus_timer_mixin import FocusTimerMixin
 from gui.widgets.kanban_card import KanbanCard
 from models.task import Task
 from services.event_logger import EventLogger
-from services.notification_service import notify_due_tasks, send_notification
+from services.notification_service import notify_due_tasks
 from services.storage_errors import StorageError
 from services.storage_paths import get_app_data_dir, get_app_data_path
 from services.task_manager import TaskManager
@@ -36,7 +34,7 @@ THREAD_EXECUTOR: concurrent.futures.ThreadPoolExecutor = (
 )
 
 
-class KanbanBoard(tk.Frame):
+class KanbanBoard(FocusTimerMixin, tk.Frame):
     """Main Kanban board frame coordinating task columns, filters, and persistence."""
 
     def __init__(self, parent: tk.Widget) -> None:
@@ -50,6 +48,7 @@ class KanbanBoard(tk.Frame):
         self.total_cards: int = 0
         self.done_cards: int = 0
         self._timer_running: bool = False
+        self._focus_task_id: str | None = None
         self._dragged_card: KanbanCard | None = None
         self._drag_hover_column: str | None = None
         self._reminder_interval_ms: int = 15 * 60 * 1000
@@ -160,10 +159,23 @@ class KanbanBoard(tk.Frame):
         )
         btn_today.pack(side=tk.LEFT, padx=2)
 
+        btn_overdue: tk.Button = tk.Button(
+            toolbar,
+            text="Overdue",
+            bg="#313244",
+            fg=config.TEXT_COLOR,
+            font=("Arial", 8, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self.set_filter_mode("Overdue"),
+        )
+        btn_overdue.pack(side=tk.LEFT, padx=2)
+
         self.filter_buttons: dict[str, tk.Button] = {
             "All": btn_all,
             "High": btn_high,
             "Today": btn_today,
+            "Overdue": btn_overdue,
         }
 
         for btn in self.filter_buttons.values():
@@ -221,6 +233,8 @@ class KanbanBoard(tk.Frame):
                 matches_mode = priority == "HIGH"
             elif mode == "Today":
                 matches_mode = due_date == today_str
+            elif mode == "Overdue":
+                matches_mode = bool(due_date) and due_date < today_str
 
             if matches_query and matches_mode:
                 if not card.winfo_ismapped():
@@ -462,69 +476,6 @@ class KanbanBoard(tk.Frame):
             "<Leave>",
             lambda _e: widget.config(bg=default_bg),  # type: ignore[call-arg]
         )
-
-    def open_timer_dialog(self) -> None:
-        """Open focus timer modal window."""
-        FocusTimerDialog(self.parent, self)
-
-    def start_focus_timer(self, minutes: int = 25) -> None:
-        """Start a focus timer countdown worker thread."""
-        if self._timer_running:
-            messagebox.showwarning("Timer Running", "A focus timer is already active!")
-            return
-
-        self._timer_running = True
-        total_seconds: int = minutes * 60
-        EventLogger.log_event(
-            "FOCUS_SESSION_STARTED", f"{minutes}m Session", {"duration_min": minutes}
-        )
-
-        def timer_worker() -> None:
-            remaining: int = total_seconds
-            while remaining > 0 and self._timer_running:
-                mins, secs = divmod(remaining, 60)
-                time_str: str = f"Focus Timer: {mins:02d}:{secs:02d} remaining"
-                self.after(
-                    0,
-                    lambda t=time_str: self._draw_timer_canvas(t),  # type: ignore[misc]
-                )
-                time.sleep(1)
-                remaining -= 1
-
-            if self._timer_running:
-                self._timer_running = False
-                self.after(0, lambda: self._on_timer_completed(minutes))
-
-        threading.Thread(target=timer_worker, daemon=True).start()
-
-    def cancel_focus_timer(self) -> None:
-        """Cancel current focus timer thread."""
-        if self._timer_running:
-            self._timer_running = False
-            EventLogger.log_event("FOCUS_SESSION_CANCELLED", "Focus Session", {})
-            self.update_progress_bar()
-            messagebox.showinfo("Timer Cancelled", "Focus session was stopped.")
-
-    def _draw_timer_canvas(self, text_str: str) -> None:
-        """Render focus timer remaining time string on progress canvas."""
-        self.canvas.delete("all")
-        width: int = self.canvas.winfo_width() or 880
-        self.canvas.create_rectangle(
-            10, 5, width - 10, 30, outline="#FAB387", fill=config.FRAME_BG, width=2
-        )
-        self.canvas.create_text(
-            width / 2, 17, text=text_str, fill="#FAB387", font=("Arial", 10, "bold")
-        )
-
-    def _on_timer_completed(self, minutes: int) -> None:
-        """Handle focus timer expiration callback and send desktop notification."""
-        self.update_progress_bar()
-        EventLogger.log_event(
-            "FOCUS_SESSION_COMPLETED", f"{minutes}m Session", {"duration_min": minutes}
-        )
-        msg: str = f"Great job! Your {minutes}-minute focus session is complete."
-        send_notification(title="Focus Timer Expired", message=msg)
-        messagebox.showinfo("Focus Complete", msg)
 
     def export_csv_async(self) -> None:
         """Export current task list to a CSV file in a background worker thread."""

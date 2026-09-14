@@ -102,6 +102,24 @@ class TestEventLogger(unittest.TestCase):
         self.assertEqual(summary["completed_count"], 1)
         self.assertEqual(dict(summary["daily_tasks"]), {})
 
+    def test_summary_preserves_focus_task_metadata(self):
+        """Verifies focus events retain the task they were associated with."""
+        mock_logs = [
+            {
+                "timestamp": "2026-09-01 10:00:00",
+                "event": "FOCUS_SESSION_COMPLETED",
+                "target": "25m Session",
+                "details": {"duration_min": 25, "task_id": "task-1"},
+            }
+        ]
+
+        with open(self.test_log_file, "w", encoding="utf-8") as file:
+            json.dump(mock_logs, file)
+
+        summary = EventLogger.get_analytics_summary()
+
+        self.assertEqual(summary["logs"][0]["details"]["task_id"], "task-1")
+
 
 if __name__ == "__main__":
     unittest.main()

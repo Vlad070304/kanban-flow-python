@@ -146,6 +146,25 @@ class TestKanbanBoardInteractions(unittest.TestCase):
         self.assertFalse(high.visible)
         self.assertTrue(low.visible)
 
+    def test_overdue_filter_shows_only_past_due_tasks(self) -> None:
+        """Filters out tasks due today, in the future, or without dates."""
+        board = KanbanBoard.__new__(KanbanBoard)
+        board.search_var = FakeVariable("")
+        board.filter_mode = FakeVariable("All")
+        board.filter_buttons = {}
+        overdue = FakeCard(Task("Late", due_date="2026-09-13"))
+        today = FakeCard(Task("Today", due_date="2026-09-14"))
+        undated = FakeCard(Task("No due date"))
+        board.all_cards = [overdue, today, undated]
+
+        with patch("gui.kanban_board.datetime.date") as date_mock:
+            date_mock.today.return_value.strftime.return_value = "2026-09-14"
+            board.set_filter_mode("Overdue")
+
+        self.assertTrue(overdue.visible)
+        self.assertFalse(today.visible)
+        self.assertFalse(undated.visible)
+
     def test_filter_button_styles_mark_active_mode(self) -> None:
         """Highlights the active filter mode and resets other buttons."""
         board = KanbanBoard.__new__(KanbanBoard)
