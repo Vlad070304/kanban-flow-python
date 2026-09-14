@@ -9,7 +9,7 @@ A desktop productivity application built with Python and Tkinter, featuring a dr
 - **Interactive Kanban Board**: Categorize tasks across custom status columns (`To Do`, `In Progress`, `Done`).
 - **Focus Timer**: Dedicated Pomodoro session manager integrated directly into board state.
 - **Analytics Dashboard**: Real-time visualization of task completion rates and focus session history.
-- **Data Export & Persistence**: Auto-saves locally to JSON and supports exporting task lists to CSV.
+- **Data Export & Persistence**: Auto-saves tasks to SQLite, stores activity logs locally, and supports JSON backups and CSV export.
 - **Overdue Task Tracking**: Highlights past-due cards based on configured system dates.
 
 ---
@@ -50,6 +50,17 @@ python main.py
 # Run all tests from the root directory with verbose output:
 python -m unittest discover -s tests -p "test_*.py" -v
 
+### Data location
+
+Application data is stored in the platform's user data directory:
+
+- Windows: `%APPDATA%\KanbanTaskManager`
+- macOS: `~/Library/Application Support/KanbanTaskManager`
+- Linux: `$XDG_DATA_HOME/KanbanTaskManager` or `~/.local/share/KanbanTaskManager`
+
+This directory contains the SQLite database, event log, and application error log.
+Explicit database paths passed to `TaskManager` remain supported for tests and custom deployments.
+
 ### Keyboard Shortcuts & Navigation
 ## Keyboard Shortcuts & Navigation
 
@@ -60,4 +71,3 @@ python -m unittest discover -s tests -p "test_*.py" -v
 | **Move Card Column** | `◄` / `►` buttons on KanbanCard |
 | **Trigger Default Action** | `Enter` inside active dialog fields |
 | **Close Modal Window** | `Esc` or `Cancel` button |
-

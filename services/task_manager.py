@@ -4,9 +4,11 @@ import datetime
 import json
 import sqlite3
 from contextlib import closing
+from pathlib import Path
 from typing import Any
 
 from models.task import Task
+from services.storage_paths import get_app_data_path
 
 
 class TaskManager:
@@ -14,9 +16,9 @@ class TaskManager:
 
     CURRENT_SCHEMA_VERSION = 1
 
-    def __init__(self, db_path: str = "kanban_data.db") -> None:
+    def __init__(self, db_path: str | None = None) -> None:
         """Initialize TaskManager with an SQLite database connection target."""
-        self.db_path: str = db_path
+        self.db_path: str = db_path or get_app_data_path("kanban_data.db")
         self.tasks: list[Task] = []
         self._init_db()
 
@@ -27,6 +29,7 @@ class TaskManager:
 
     def _get_connection(self) -> sqlite3.Connection:
         """Return a configured SQLite database connection."""
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         return sqlite3.connect(self.db_path)
 
     def _init_db(self) -> None:

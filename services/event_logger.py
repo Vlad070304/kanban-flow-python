@@ -9,11 +9,13 @@ import os
 from collections import defaultdict
 from typing import Any, cast
 
+from services.storage_paths import get_app_data_path
+
 
 class EventLogger:
     """Handles structured application event logging and data aggregation."""
 
-    LOG_FILE = "event_log.json"
+    LOG_FILE = get_app_data_path("event_log.json")
 
     @classmethod
     def log_event(cls, event_type: str, target: str, details: dict[str, Any]) -> None:
@@ -29,7 +31,9 @@ class EventLogger:
         logs.append(entry)
 
         try:
-            with open(cls.LOG_FILE, "w", encoding="utf-8") as file:
+            log_path = os.path.abspath(cls.LOG_FILE)
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "w", encoding="utf-8") as file:
                 json.dump(logs, file, indent=4)
         except (OSError, TypeError) as err:
             print(f"Error saving log event: {err}")

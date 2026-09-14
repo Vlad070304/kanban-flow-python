@@ -18,10 +18,12 @@ from gui.widgets.kanban_card import KanbanCard
 from models.task import Task
 from services.event_logger import EventLogger
 from services.notification_service import notify_due_tasks, send_notification
+from services.storage_paths import get_app_data_dir, get_app_data_path
 from services.task_manager import TaskManager
 
+get_app_data_dir().mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
-    filename="app_error.log",
+    filename=get_app_data_path("app_error.log"),
     level=logging.ERROR,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
@@ -35,8 +37,6 @@ THREAD_EXECUTOR: concurrent.futures.ThreadPoolExecutor = (
 class KanbanBoard(tk.Frame):
     """Main Kanban board frame coordinating task columns, filters, and persistence."""
 
-    DATA_FILE: str = "kanban_data.db"
-
     def __init__(self, parent: tk.Widget) -> None:
         """Initialize KanbanBoard container instance."""
         super().__init__(parent, bg=config.BG_COLOR)
@@ -44,7 +44,7 @@ class KanbanBoard(tk.Frame):
         self.columns: list[str] = ["To Do", "In Progress", "Done"]
         self.column_frames: dict[str, tk.LabelFrame] = {}
         self.all_cards: list[KanbanCard] = []
-        self.task_manager: TaskManager = TaskManager(self.DATA_FILE)
+        self.task_manager: TaskManager = TaskManager()
         self.total_cards: int = 0
         self.done_cards: int = 0
         self._timer_running: bool = False
