@@ -1,3 +1,5 @@
+"""Tests for task reminder notification behavior."""
+
 import unittest
 from datetime import date
 from unittest.mock import patch
@@ -20,7 +22,9 @@ class TestNotificationService(unittest.TestCase):
         clear_reminder_state()
 
     @patch("services.notification_service.send_notification")
-    def test_notifies_once_per_day(self, send_notification: unittest.mock.Mock) -> None:
+    def test_notifies_once_per_day(
+        self, mock_send_notification: unittest.mock.Mock
+    ) -> None:
         """A repeated reminder check does not duplicate the native notification."""
         tasks = [Task(task_id="task-1", title="Submit report", due_date="2026-09-13")]
 
@@ -29,14 +33,14 @@ class TestNotificationService(unittest.TestCase):
 
         self.assertEqual(first_count, 1)
         self.assertEqual(second_count, 0)
-        send_notification.assert_called_once_with(
+        mock_send_notification.assert_called_once_with(
             title="Task Reminder",
             message="1 task(s) due or overdue: Submit report",
         )
 
     @patch("services.notification_service.send_notification")
     def test_notifies_again_on_next_day(
-        self, send_notification: unittest.mock.Mock
+        self, mock_send_notification: unittest.mock.Mock
     ) -> None:
         """A task can be reminded again on a later day while overdue."""
         task = Task(task_id="task-1", title="Submit report")
@@ -44,7 +48,7 @@ class TestNotificationService(unittest.TestCase):
         notify_due_tasks([task], date(2026, 9, 13))
         notify_due_tasks([task], date(2026, 9, 14))
 
-        self.assertEqual(send_notification.call_count, 2)
+        self.assertEqual(mock_send_notification.call_count, 2)
 
     @patch("services.notification_service._PLYER_AVAILABLE", True)
     @patch("services.notification_service.notification", create=True)

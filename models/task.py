@@ -151,58 +151,72 @@ class Task:
 
     @property
     def title(self) -> str:
+        """Return the validated task title."""
         return self._title
 
     @title.setter
     def title(self, value: str) -> None:
+        """Set the task title after validation."""
         self._title = self._validate_title(value)
 
     @property
     def priority(self) -> TaskPriority:
+        """Return the validated task priority."""
         return self._priority
 
     @priority.setter
     def priority(self, value: str | TaskPriority) -> None:
+        """Set the task priority after validation."""
         self._priority = self._validate_enum(value, TaskPriority, "priority")
 
     @property
     def status(self) -> TaskStatus:
+        """Return the validated task status."""
         return self._status
 
     @status.setter
     def status(self, value: str | TaskStatus) -> None:
+        """Set the task status after validation."""
         self._status = self._validate_enum(value, TaskStatus, "status")
 
     @property
     def due_date(self) -> str:
+        """Return the optional ISO-formatted due date."""
         return self._due_date
 
     @due_date.setter
     def due_date(self, value: str) -> None:
+        """Set the due date after validation."""
         self._due_date = self._validate_due_date(value)
 
     @property
     def tags(self) -> list[str]:
+        """Return the normalized task tags."""
         return self._tags
 
     @tags.setter
     def tags(self, value: list[str] | None) -> None:
+        """Set the task tags after validation."""
         self._tags = self._validate_tags(value)
 
     @property
     def subtasks(self) -> list[dict[str, Any]]:
+        """Return the validated subtask records."""
         return self._subtasks
 
     @subtasks.setter
     def subtasks(self, value: list[dict[str, Any]] | None) -> None:
+        """Set the subtasks after validation."""
         self._subtasks = self._validate_subtasks(value)
 
     @property
     def recurrence(self) -> TaskRecurrence:
+        """Return the recurring-task schedule."""
         return self._recurrence
 
     @recurrence.setter
     def recurrence(self, value: str | TaskRecurrence) -> None:
+        """Set the recurring-task schedule after validation."""
         validated = self._validate_recurrence(value)
         if validated != TaskRecurrence.NONE and not self.due_date:
             raise ValueError("recurring tasks require a due_date")

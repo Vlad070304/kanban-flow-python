@@ -48,9 +48,38 @@ pip install pyinstaller
 python main.py
 
 ### Testing
-# The project includes unit test suites for models, services, and GUI components using Python's standard unittest framework.
-# Run all tests from the root directory with verbose output:
+The project includes unit test suites for models, services, and GUI components using Python's standard `unittest` framework.
+
+Run all tests from the repository root:
+
+```powershell
 python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+Run the headless release smoke test:
+
+```powershell
+python release_smoke_test.py
+```
+
+The smoke test uses temporary data and verifies SQLite initialization and
+migrations, recurring-task persistence, JSON backup restore, CSV import, and
+task-linked focus analytics. It does not open Tkinter windows, so it can run
+on CI runners without a graphical display.
+
+Before creating a release, run:
+
+```powershell
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy
+python -m unittest discover -s tests -p "test_*.py" -v
+python release_smoke_test.py
+python build.py
+```
+
+The final command requires PyInstaller and creates the standalone bundle in
+the `dist/` directory.
 
 ### Data location
 
