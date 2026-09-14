@@ -1,5 +1,6 @@
 """Services handling task collection management, SQLite persistence, and backups."""
 
+import csv
 import datetime
 import json
 import logging
@@ -18,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 class TaskManager:
     """Manage CRUD operations, SQLite persistence, and task backups."""
 
-    CURRENT_SCHEMA_VERSION = 1
+    CURRENT_SCHEMA_VERSION = 2
 
     def __init__(self, db_path: str | None = None) -> None:
         """Initialize TaskManager with an SQLite database connection target."""
@@ -39,37 +40,43 @@ class TaskManager:
     def _init_db(self) -> None:
         """Initialize the database and apply all pending schema migrations."""
         try:
-            with closing(self._get_connection()) as conn, conn:
-                conn.execute(
-                    """
+            with closing(self._get_connection()) as conn:
+                with conn:
+                    conn.execute(
+                        """
                     CREATE TABLE IF NOT EXISTS schema_migrations (
                         version INTEGER PRIMARY KEY,
                         applied_at TEXT NOT NULL
                     );
                     """
-                )
-                applied_versions = {
-                    row[0]
-                    for row in conn.execute(
-                        "SELECT version FROM schema_migrations ORDER BY version;"
                     )
-                }
+                    applied_versions = {
+                        row[0]
+                        for row in conn.execute(
+                            "SELECT version FROM schema_migrations ORDER BY version;"
+                        )
+                    }
 
-                migrations = {1: self._migration_001_initial_schema}
-                for version in range(1, self.CURRENT_SCHEMA_VERSION + 1):
-                    if version in applied_versions:
-                        continue
-                    migrations[version](conn)
-                    conn.execute(
-                        """
-                        INSERT INTO schema_migrations (version, applied_at)
-                        VALUES (?, ?);
-                        """,
-                        (
-                            version,
-                            datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                        ),
-                    )
+                    migrations = {
+                        1: self._migration_001_initial_schema,
+                        2: self._migration_002_recurring_tasks,
+                    }
+                    for version in range(1, self.CURRENT_SCHEMA_VERSION + 1):
+                        if version in applied_versions:
+                            continue
+                        migrations[version](conn)
+                        conn.execute(
+                            """
+                            INSERT INTO schema_migrations (version, applied_at)
+                            VALUES (?, ?);
+                            """,
+                            (
+                                version,
+                                datetime.datetime.now(
+                                    datetime.timezone.utc
+                                ).isoformat(),
+                            ),
+                        )
         except (OSError, sqlite3.Error) as err:
             LOGGER.exception("Database initialization failed for %s", self.db_path)
             raise StorageError("initialize database", self.db_path, err) from err
@@ -94,6 +101,15 @@ class TaskManager:
         if "subtasks" not in columns:
             conn.execute("ALTER TABLE tasks ADD COLUMN subtasks TEXT;")
 
+    @staticmethod
+    def _migration_002_recurring_tasks(conn: sqlite3.Connection) -> None:
+        """Add recurrence metadata to existing task databases."""
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(tasks);")}
+        if "recurrence" not in columns:
+            conn.execute(
+                "ALTER TABLE tasks ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'None';"
+            )
+
     def add_task(
         self,
         title: str,
@@ -102,6 +118,7 @@ class TaskManager:
         due_date: str = "",
         tags: list[str] | None = None,
         subtasks: list[dict[str, Any]] | None = None,
+        recurrence: str = "None",
     ) -> Task:
         """Create and add a new task instance to the collection."""
         task = Task(
@@ -111,6 +128,7 @@ class TaskManager:
             due_date=due_date,
             tags=tags if tags else [],
             subtasks=subtasks if subtasks else [],
+            recurrence=recurrence,
         )
         self.tasks.append(task)
         self.save_to_file()
@@ -164,9 +182,9 @@ class TaskManager:
         """Save current in-memory task collection to the SQLite database."""
         query = """
         INSERT OR REPLACE INTO tasks (
-            task_id, title, priority, status, due_date, tags, subtasks
+            task_id, title, priority, status, due_date, tags, subtasks, recurrence
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """
         try:
             with closing(self._get_connection()) as conn:
@@ -184,7 +202,7 @@ class TaskManager:
             with closing(self._get_connection()) as conn:
                 query = (
                     "SELECT task_id, title, priority, status, due_date, "
-                    "tags, subtasks FROM tasks;"
+                    "tags, subtasks, recurrence FROM tasks;"
                 )
                 cursor = conn.execute(query)
                 rows = cursor.fetchall()
@@ -218,13 +236,12 @@ class TaskManager:
                     "Restore backup rejected invalid structure: %s", source_filepath
                 )
                 return False
-
             restored_tasks = [Task.from_dict(item) for item in data]
             query = """
             INSERT INTO tasks (
-                task_id, title, priority, status, due_date, tags, subtasks
+                task_id, title, priority, status, due_date, tags, subtasks, recurrence
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
             """
             with closing(self._get_connection()) as conn:
                 with conn:
@@ -237,4 +254,63 @@ class TaskManager:
             return True
         except (OSError, json.JSONDecodeError, sqlite3.Error, TypeError, ValueError):
             LOGGER.exception("Restore backup failed for %s", source_filepath)
+            return False
+
+    def import_tasks(self, source_filepath: str, replace: bool = False) -> bool:
+        """Import validated tasks from a JSON backup or exported CSV file."""
+        try:
+            if source_filepath.lower().endswith(".csv"):
+                with open(source_filepath, newline="", encoding="utf-8") as file:
+                    rows = csv.DictReader(file)
+                    data = [
+                        {
+                            "task_id": row.get("TaskId") or None,
+                            "title": row.get("Title", ""),
+                            "status": row.get("Status", "To Do"),
+                            "priority": row.get("Priority", "LOW"),
+                            "due_date": row.get("DueDate", ""),
+                            "tags": [
+                                tag.strip()
+                                for tag in row.get("Tags", "")
+                                .replace(";", ",")
+                                .split(",")
+                                if tag.strip()
+                            ],
+                            "recurrence": row.get("Recurrence", "None"),
+                        }
+                        for row in rows
+                    ]
+            else:
+                with open(source_filepath, encoding="utf-8") as file:
+                    data = json.load(file)
+            if not isinstance(data, list) or not all(
+                isinstance(item, dict) for item in data
+            ):
+                return False
+            imported = [Task.from_dict(item) for item in data]
+            existing = [] if replace else self.tasks
+            by_id = {task.task_id: task for task in existing}
+            by_id.update({task.task_id: task for task in imported})
+            merged = list(by_id.values())
+            query = """
+            INSERT OR REPLACE INTO tasks (
+                task_id, title, priority, status, due_date, tags, subtasks, recurrence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """
+            with closing(self._get_connection()) as conn:
+                with conn:
+                    if replace:
+                        conn.execute("DELETE FROM tasks;")
+                    conn.executemany(query, (task.to_db_row() for task in imported))
+            self.tasks = merged
+            return True
+        except (
+            OSError,
+            csv.Error,
+            json.JSONDecodeError,
+            sqlite3.Error,
+            TypeError,
+            ValueError,
+        ):
+            LOGGER.exception("Import tasks failed for %s", source_filepath)
             return False

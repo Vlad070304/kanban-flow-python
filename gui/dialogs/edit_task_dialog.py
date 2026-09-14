@@ -5,6 +5,7 @@ from tkinter import messagebox
 from typing import Any, cast
 
 import config
+from models.task import TaskRecurrence
 
 
 class EditTaskDialog(tk.Toplevel):
@@ -101,6 +102,20 @@ class EditTaskDialog(tk.Toplevel):
             selectcolor=config.BG_COLOR,
         ).pack(side=tk.LEFT)
 
+        tk.Label(
+            self,
+            text="Recurrence:",
+            fg=config.TEXT_COLOR,
+            bg=config.FRAME_BG,
+            font=("Arial", 9, "bold"),
+        ).pack(anchor="w", padx=15, pady=(4, 2))
+        self.recurrence_var = tk.StringVar(value=self.card.task.recurrence.value)
+        tk.OptionMenu(
+            self,
+            self.recurrence_var,
+            *(recurrence.value for recurrence in TaskRecurrence),
+        ).pack(anchor="w", padx=15)
+
         tk.Radiobutton(
             prio_frame,
             text="High",
@@ -155,11 +170,18 @@ class EditTaskDialog(tk.Toplevel):
             return
 
         new_prio = "HIGH" if self.prio_var.get() == 2 else "LOW"
+        new_recurrence = self.recurrence_var.get()
+        if new_recurrence != TaskRecurrence.NONE.value and not new_due:
+            messagebox.showerror(
+                "Invalid Recurrence", "Recurring tasks require a due date."
+            )
+            return
         self.card.task.title = new_title
         self.card.task.priority = new_prio
         self.card.task.due_date = new_due
         self.card.task.tags = new_tags
         self.card.task.subtasks = new_subtasks
+        self.card.task.recurrence = new_recurrence
 
         col_name = self.card.task.status
         card_id = self.card.task.task_id

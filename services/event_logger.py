@@ -74,6 +74,9 @@ class EventLogger:
 
         daily_tasks: defaultdict[str, int] = defaultdict(int)
         daily_focus: defaultdict[str, int] = defaultdict(int)
+        focus_by_task: defaultdict[str, int] = defaultdict(int)
+        completed_by_task: defaultdict[str, int] = defaultdict(int)
+        completed_by_priority: defaultdict[str, int] = defaultdict(int)
 
         for log in logs:
             ts_str = log.get("timestamp", "")
@@ -83,9 +86,18 @@ class EventLogger:
 
             if log.get("event") == "TASK_COMPLETED":
                 daily_tasks[date_key] += 1
+                priority = log.get("details", {}).get("priority")
+                if priority:
+                    completed_by_priority[str(priority)] += 1
+                task_id = log.get("details", {}).get("task_id")
+                if task_id:
+                    completed_by_task[str(task_id)] += 1
             elif log.get("event") == "FOCUS_SESSION_COMPLETED":
                 dur = log.get("details", {}).get("duration_min", 0)
                 daily_focus[date_key] += dur
+                task_id = log.get("details", {}).get("task_id")
+                if task_id:
+                    focus_by_task[str(task_id)] += dur
 
         return {
             "completed_count": completed_count,
@@ -93,5 +105,8 @@ class EventLogger:
             "total_focus_minutes": total_focus_minutes,
             "daily_tasks": daily_tasks,
             "daily_focus": daily_focus,
+            "focus_by_task": focus_by_task,
+            "completed_by_task": completed_by_task,
+            "completed_by_priority": completed_by_priority,
             "logs": logs,
         }

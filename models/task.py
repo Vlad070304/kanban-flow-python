@@ -1,8 +1,9 @@
 """Data model module for managing individual Kanban tasks and subtasks."""
 
+import calendar
 import json
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from enum import Enum
 from typing import Any, TypeVar
 
@@ -22,8 +23,18 @@ class TaskStatus(str, Enum):
     DONE = "Done"
 
 
+class TaskRecurrence(str, Enum):
+    """Supported recurring task schedules."""
+
+    NONE = "None"
+    DAILY = "Daily"
+    WEEKLY = "Weekly"
+    MONTHLY = "Monthly"
+
+
 DEFAULT_PRIORITY = TaskPriority.LOW
 DEFAULT_STATUS = TaskStatus.TO_DO
+DEFAULT_RECURRENCE = TaskRecurrence.NONE
 EnumValue = TypeVar("EnumValue", bound=Enum)
 
 
@@ -39,6 +50,7 @@ class Task:
         tags: list[str] | None = None,
         subtasks: list[dict[str, Any]] | None = None,
         task_id: str | None = None,
+        recurrence: str | TaskRecurrence = DEFAULT_RECURRENCE,
     ) -> None:
         """Initialize a validated Task instance."""
         self.task_id: str = self._validate_task_id(task_id or str(uuid.uuid4()))
@@ -48,15 +60,18 @@ class Task:
         self.due_date = due_date
         self.tags = tags
         self.subtasks = subtasks
+        self.recurrence = recurrence
 
     @staticmethod
     def _validate_task_id(task_id: str) -> str:
+        """Validate and normalize a task identifier."""
         if not isinstance(task_id, str) or not task_id.strip():
             raise ValueError("task_id must be a non-empty string")
         return task_id.strip()
 
     @staticmethod
     def _validate_title(title: str) -> str:
+        """Validate and normalize a task title."""
         if not isinstance(title, str) or not title.strip():
             raise ValueError("title must be a non-empty string")
         return title.strip()
@@ -65,6 +80,7 @@ class Task:
     def _validate_enum(
         value: str | Enum, enum_type: type[EnumValue], field: str
     ) -> EnumValue:
+        """Validate a value against a supported enum type."""
         try:
             return enum_type(value)
         except (TypeError, ValueError) as err:
@@ -73,6 +89,7 @@ class Task:
 
     @staticmethod
     def _validate_due_date(due_date: str) -> str:
+        """Validate an optional ISO-formatted due date."""
         if not isinstance(due_date, str):
             raise ValueError("due_date must be an ISO date string")
         if due_date:
@@ -84,6 +101,7 @@ class Task:
 
     @staticmethod
     def _validate_tags(tags: list[str] | None) -> list[str]:
+        """Validate and normalize task tags."""
         if tags is None:
             return []
         if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
@@ -96,9 +114,21 @@ class Task:
         return normalized_tags
 
     @staticmethod
+    def _validate_recurrence(
+        recurrence: str | TaskRecurrence,
+    ) -> TaskRecurrence:
+        """Validate a recurring-task schedule."""
+        try:
+            return TaskRecurrence(recurrence)
+        except (TypeError, ValueError) as err:
+            allowed = ", ".join(member.value for member in TaskRecurrence)
+            raise ValueError(f"recurrence must be one of: {allowed}") from err
+
+    @staticmethod
     def _validate_subtasks(
         subtasks: list[dict[str, Any]] | None,
     ) -> list[dict[str, Any]]:
+        """Validate and normalize task subtasks."""
         if subtasks is None:
             return []
         if not isinstance(subtasks, list):
@@ -167,11 +197,43 @@ class Task:
     def subtasks(self, value: list[dict[str, Any]] | None) -> None:
         self._subtasks = self._validate_subtasks(value)
 
+    @property
+    def recurrence(self) -> TaskRecurrence:
+        return self._recurrence
+
+    @recurrence.setter
+    def recurrence(self, value: str | TaskRecurrence) -> None:
+        validated = self._validate_recurrence(value)
+        if validated != TaskRecurrence.NONE and not self.due_date:
+            raise ValueError("recurring tasks require a due_date")
+        self._recurrence = validated
+
     def mark_completed(self) -> None:
         """Mark task status as Done and set subtasks to completed."""
         self.status = TaskStatus.DONE
         for subtask in self.subtasks:
             subtask["completed"] = True
+
+    def advance_recurrence(self) -> bool:
+        """Move a recurring task to its next due date after completion."""
+        if self.recurrence == TaskRecurrence.NONE or not self.due_date:
+            return False
+        current = date.fromisoformat(self.due_date)
+        if self.recurrence == TaskRecurrence.DAILY:
+            next_date = current + timedelta(days=1)
+        elif self.recurrence == TaskRecurrence.WEEKLY:
+            next_date = current + timedelta(days=7)
+        else:
+            next_month = current.month % 12 + 1
+            next_year = current.year + (current.month // 12)
+            next_day = min(current.day, calendar.monthrange(next_year, next_month)[1])
+            next_date = current.replace(year=next_year, month=next_month, day=next_day)
+        self.due_date = next_date.isoformat()
+        self.status = TaskStatus.TO_DO
+        self.subtasks = [
+            {"title": subtask["title"], "completed": False} for subtask in self.subtasks
+        ]
+        return True
 
     def to_dict(self) -> dict[str, Any]:
         """Convert task instance attributes to a dictionary payload."""
@@ -183,9 +245,10 @@ class Task:
             "due_date": self.due_date,
             "tags": self.tags,
             "subtasks": self.subtasks,
+            "recurrence": self.recurrence.value,
         }
 
-    def to_db_row(self) -> tuple[str, str, str, str, str, str, str]:
+    def to_db_row(self) -> tuple[str, str, str, str, str, str, str, str]:
         """Convert task attributes to an SQL row tuple for database insertion."""
         tags_str: str = ",".join(self.tags)
         subtasks_json: str = json.dumps(self.subtasks)
@@ -197,6 +260,7 @@ class Task:
             self.due_date,
             tags_str,
             subtasks_json,
+            self.recurrence.value,
         )
 
     @classmethod
@@ -210,6 +274,7 @@ class Task:
             due_date=data.get("due_date", ""),
             tags=data.get("tags", []),
             subtasks=data.get("subtasks", []),
+            recurrence=data.get("recurrence", DEFAULT_RECURRENCE),
         )
 
     @classmethod
@@ -236,6 +301,8 @@ class Task:
             except (json.JSONDecodeError, TypeError):
                 subtasks = []
 
+        recurrence = str(row[7]) if len(row) > 7 and row[7] else DEFAULT_RECURRENCE
+
         return cls(
             task_id=str(task_id),
             title=str(title),
@@ -244,4 +311,5 @@ class Task:
             due_date=str(due_date) if due_date else "",
             tags=tags,
             subtasks=subtasks,
+            recurrence=recurrence,
         )

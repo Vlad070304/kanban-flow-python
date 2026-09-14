@@ -100,6 +100,15 @@ class AnalyticsWindow(tk.Toplevel):
             accent_color="#89B4FA",
         )
 
+        focus_by_task = metrics["focus_by_task"]
+        top_task = max(focus_by_task, key=focus_by_task.get) if focus_by_task else None
+        self._create_stat_card(
+            cards_frame,
+            title="Top Focus Task",
+            value=top_task or "Unassigned",
+            accent_color="#CBA6F7",
+        )
+
         chart_frame = tk.Frame(self, bg=config.FRAME_BG)
         chart_frame.pack(fill=tk.X, padx=15, pady=10)
 

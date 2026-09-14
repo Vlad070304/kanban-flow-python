@@ -447,10 +447,23 @@ class KanbanBoard(FocusTimerMixin, tk.Frame):
         )
         btn_clear_done.pack(side=tk.LEFT, padx=5)
 
+        btn_import: tk.Button = tk.Button(
+            row2,
+            text="Import Tasks",
+            bg="#74C7EC",
+            fg="#11111B",
+            font=("Arial", 9, "bold"),
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=self.import_tasks,
+        )
+        btn_import.pack(side=tk.LEFT, padx=5)
+
         self._apply_hover_effect(btn_add, config.ACCENT_COLOR, config.BTN_HOVER_ADD)
         self._apply_hover_effect(btn_timer, "#FAB387", config.BTN_HOVER_TIMER)
         self._apply_hover_effect(btn_analytics, "#89B4FA", "#B4BEFE")
         self._apply_hover_effect(btn_clear_done, "#F38BA8", config.BTN_HOVER_CLEAR)
+        self._apply_hover_effect(btn_import, "#74C7EC", "#89DCEB")
 
         self.theme_button = tk.Button(
             row2,
@@ -486,20 +499,32 @@ class KanbanBoard(FocusTimerMixin, tk.Frame):
         if not filepath:
             return
 
-        snapshot: list[tuple[str, str, str, str, str]] = [
-            (t.title, t.status, t.priority, t.due_date, ", ".join(t.tags))
+        snapshot: list[tuple[str, str, str, str, str, str, str]] = [
+            (
+                t.task_id,
+                t.title,
+                t.status,
+                t.priority,
+                t.due_date,
+                ", ".join(t.tags),
+                t.recurrence.value,
+            )
             for t in self.task_manager.tasks
         ]
 
         def write_file_task(
-            data: list[tuple[str, str, str, str, str]], path: str
+            data: list[tuple[str, str, str, str, str, str, str]], path: str
         ) -> int:
-            lines: list[str] = ["Title,Status,Priority,DueDate,Tags\n"]
-            for title, status, priority, due_date, tags in data:
+            lines: list[str] = [
+                "TaskId,Title,Status,Priority,DueDate,Tags,Recurrence\n"
+            ]
+            for task_id, title, status, priority, due_date, tags, recurrence in data:
+                clean_id: str = task_id.replace(",", " ")
                 clean_title: str = title.replace(",", " ")
                 clean_tags: str = tags.replace(",", ";")
                 lines.append(
-                    f"{clean_title},{status},{priority},{due_date},{clean_tags}\n"
+                    f"{clean_id},{clean_title},{status},{priority},{due_date},"
+                    f"{clean_tags},{recurrence}\n"
                 )
             with open(path, "w", encoding="utf-8") as file:
                 file.writelines(lines)
@@ -518,6 +543,24 @@ class KanbanBoard(FocusTimerMixin, tk.Frame):
 
         future: Any = THREAD_EXECUTOR.submit(write_file_task, snapshot, filepath)
         future.add_done_callback(on_complete)
+
+    def import_tasks(self) -> None:
+        """Import tasks from a JSON backup or compatible CSV export."""
+        filepath = filedialog.askopenfilename(
+            filetypes=[
+                ("Task files", "*.json *.csv"),
+                ("JSON files", "*.json"),
+                ("CSV files", "*.csv"),
+            ]
+        )
+        if not filepath:
+            return
+        if not self.task_manager.import_tasks(filepath):
+            messagebox.showerror("Import Error", "Could not import the selected tasks.")
+            return
+        self.rebuild_board_cards()
+        self.update_progress_bar()
+        EventLogger.log_event("DATA_IMPORTED", filepath, {})
 
     def _bind_keyboard_events(self) -> None:
         """Bind global keyboard shortcuts to quick focus entries."""
@@ -631,7 +674,8 @@ class KanbanBoard(FocusTimerMixin, tk.Frame):
         next_col: str = self.columns[new_col_idx]
         card.task.status = next_col
         if next_col == "Done":
-            card.task.mark_completed()
+            self._complete_task(card.task)
+            next_col = card.task.status
 
         if not self.save_board_state():
             return
@@ -649,11 +693,6 @@ class KanbanBoard(FocusTimerMixin, tk.Frame):
             card.task.tags,
             card.task.subtasks,
         )
-
-        if next_col == "Done":
-            EventLogger.log_event(
-                "TASK_COMPLETED", card.task.title, {"priority": card.task.priority}
-            )
 
     def _set_drag_column(self, column_name: str | None) -> None:
         """Track the column currently under a dragged card."""
@@ -716,9 +755,24 @@ class KanbanBoard(FocusTimerMixin, tk.Frame):
             return
         card.task.status = column_name
         if column_name == "Done":
-            card.task.mark_completed()
+            self._complete_task(card.task)
         self.save_board_state()
         self.rebuild_board_cards()
+
+    @staticmethod
+    def _complete_task(task: Task) -> None:
+        """Complete a task or advance it to the next recurring occurrence."""
+        task.mark_completed()
+        EventLogger.log_event(
+            "TASK_COMPLETED",
+            task.title,
+            {
+                "priority": task.priority,
+                "task_id": task.task_id,
+                "recurrence": task.recurrence.value,
+            },
+        )
+        task.advance_recurrence()
 
     def rebuild_board_cards(self) -> None:
         """Rebuild card widgets after a drag-and-drop status change."""

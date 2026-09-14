@@ -11,7 +11,7 @@ import unittest
 from contextlib import closing
 from unittest.mock import patch
 
-from models.task import Task, TaskPriority, TaskStatus
+from models.task import Task, TaskPriority, TaskRecurrence, TaskStatus
 from services.storage_errors import StorageError
 from services.task_manager import TaskManager
 
@@ -102,6 +102,22 @@ class TestTaskModel(unittest.TestCase):
         self.assertEqual(task.status, "Done")
         self.assertTrue(task.subtasks[0]["completed"])
         self.assertEqual(restored.to_dict(), task.to_dict())
+
+    def test_recurring_task_advances_after_completion(self) -> None:
+        """Verifies recurring tasks reset for their next scheduled occurrence."""
+        task = Task(
+            task_id="recurring-1",
+            title="Daily review",
+            due_date="2026-09-14",
+            recurrence=TaskRecurrence.DAILY,
+            subtasks=[{"title": "Review", "completed": False}],
+        )
+
+        task.mark_completed()
+        self.assertTrue(task.advance_recurrence())
+        self.assertEqual(task.status, TaskStatus.TO_DO)
+        self.assertEqual(task.due_date, "2026-09-15")
+        self.assertFalse(task.subtasks[0]["completed"])
 
     def test_invalid_subtask_json_uses_empty_list(self) -> None:
         """Verifies malformed persisted subtask data does not break loading."""
@@ -244,9 +260,10 @@ class TestTaskManagerSQLite(unittest.TestCase):
 
     def test_migrates_legacy_database_and_records_version(self) -> None:
         """Verifies legacy databases receive the subtasks migration once."""
-        with closing(sqlite3.connect(self.LEGACY_DB)) as connection, connection:
-            connection.execute(
-                """
+        with closing(sqlite3.connect(self.LEGACY_DB)) as connection:
+            with connection:
+                connection.execute(
+                    """
                 CREATE TABLE tasks (
                     task_id TEXT PRIMARY KEY,
                     title TEXT NOT NULL,
@@ -256,42 +273,47 @@ class TestTaskManagerSQLite(unittest.TestCase):
                     tags TEXT
                 );
                 """
-            )
-            connection.execute(
-                """
+                )
+                connection.execute(
+                    """
                 INSERT INTO tasks
                     (task_id, title, priority, status, due_date, tags)
                 VALUES (?, ?, ?, ?, ?, ?);
                 """,
-                ("legacy-1", "Legacy task", "LOW", "To Do", "", "legacy"),
-            )
+                    ("legacy-1", "Legacy task", "LOW", "To Do", "", "legacy"),
+                )
 
         TaskManager(db_path=self.LEGACY_DB)
-        with closing(sqlite3.connect(self.LEGACY_DB)) as connection, connection:
-            columns = {
-                column[1] for column in connection.execute("PRAGMA table_info(tasks);")
-            }
-            migration_versions = [
-                row[0]
-                for row in connection.execute("SELECT version FROM schema_migrations;")
-            ]
-            task_row = connection.execute(
-                "SELECT task_id, subtasks FROM tasks WHERE task_id = ?;",
-                ("legacy-1",),
-            ).fetchone()
+        with closing(sqlite3.connect(self.LEGACY_DB)) as connection:
+            with connection:
+                columns = {
+                    column[1]
+                    for column in connection.execute("PRAGMA table_info(tasks);")
+                }
+                migration_versions = [
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT version FROM schema_migrations;"
+                    )
+                ]
+                task_row = connection.execute(
+                    "SELECT task_id, subtasks FROM tasks WHERE task_id = ?;",
+                    ("legacy-1",),
+                ).fetchone()
 
         self.assertIn("subtasks", columns)
-        self.assertEqual(migration_versions, [1])
+        self.assertEqual(migration_versions, [1, 2])
         self.assertEqual(task_row, ("legacy-1", None))
 
         TaskManager(db_path=self.LEGACY_DB)
-        with closing(sqlite3.connect(self.LEGACY_DB)) as connection, connection:
-            self.assertEqual(
-                connection.execute(
-                    "SELECT COUNT(*) FROM schema_migrations;"
-                ).fetchone()[0],
-                1,
-            )
+        with closing(sqlite3.connect(self.LEGACY_DB)) as connection:
+            with connection:
+                self.assertEqual(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM schema_migrations;"
+                    ).fetchone()[0],
+                    2,
+                )
 
     def test_export_and_restore_backup(self) -> None:
         """Verifies JSON backups preserve task fields through restore."""
@@ -315,6 +337,31 @@ class TestTaskManagerSQLite(unittest.TestCase):
         self.assertEqual(restored.task_id, task.task_id)
         self.assertEqual(restored.tags, ["backup"])
         self.assertEqual(restored.subtasks, [{"title": "Verify", "completed": False}])
+
+    def test_import_tasks_from_json_merges_and_persists(self) -> None:
+        """Verifies JSON imports preserve recurrence and merge by task ID."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as file:
+            json.dump(
+                [
+                    {
+                        "task_id": "imported",
+                        "title": "Imported task",
+                        "due_date": "2026-09-14",
+                        "recurrence": "Weekly",
+                    }
+                ],
+                file,
+            )
+            source = file.name
+        try:
+            self.assertTrue(self.manager.import_tasks(source))
+            self.assertEqual(self.manager.tasks[0].recurrence, TaskRecurrence.WEEKLY)
+            restored = TaskManager(db_path=self.TEST_DB)
+            self.assertEqual(restored.load_from_file()[0].task_id, "imported")
+        finally:
+            os.remove(source)
 
 
 if __name__ == "__main__":

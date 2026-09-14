@@ -90,6 +90,9 @@ class TestEventLogger(unittest.TestCase):
         self.assertEqual(summary["daily_tasks"]["2026-09-01"], 1)
         self.assertEqual(summary["daily_focus"]["2026-09-01"], 25)
         self.assertEqual(summary["daily_focus"]["2026-09-02"], 15)
+        self.assertEqual(summary["focus_by_task"], {})
+        self.assertEqual(summary["completed_by_task"], {})
+        self.assertEqual(summary["completed_by_priority"]["LOW"], 1)
         self.assertEqual(len(summary["logs"]), 3)
 
     def test_summary_skips_events_without_timestamps(self):
@@ -119,6 +122,27 @@ class TestEventLogger(unittest.TestCase):
         summary = EventLogger.get_analytics_summary()
 
         self.assertEqual(summary["logs"][0]["details"]["task_id"], "task-1")
+
+    def test_summary_aggregates_focus_by_task(self):
+        """Verifies focus minutes are grouped by associated task."""
+        mock_logs = [
+            {
+                "timestamp": "2026-09-01 10:00:00",
+                "event": "FOCUS_SESSION_COMPLETED",
+                "details": {"duration_min": 25, "task_id": "task-1"},
+            },
+            {
+                "timestamp": "2026-09-01 11:00:00",
+                "event": "FOCUS_SESSION_COMPLETED",
+                "details": {"duration_min": 15, "task_id": "task-1"},
+            },
+        ]
+        with open(self.test_log_file, "w", encoding="utf-8") as file:
+            json.dump(mock_logs, file)
+
+        summary = EventLogger.get_analytics_summary()
+
+        self.assertEqual(summary["focus_by_task"]["task-1"], 40)
 
 
 if __name__ == "__main__":

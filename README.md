@@ -9,7 +9,9 @@ A desktop productivity application built with Python and Tkinter, featuring a dr
 - **Interactive Kanban Board**: Categorize tasks across custom status columns (`To Do`, `In Progress`, `Done`).
 - **Focus Timer**: Dedicated Pomodoro session manager integrated directly into board state.
 - **Analytics Dashboard**: Real-time visualization of task completion rates and focus session history.
-- **Data Export & Persistence**: Auto-saves tasks to SQLite, stores activity logs locally, and supports JSON backups and CSV export.
+- **Data Export & Persistence**: Auto-saves tasks to SQLite, stores activity logs locally, and supports JSON backups, CSV export, and task import.
+- **Recurring Tasks**: Schedule daily, weekly, or monthly task occurrences; completing one advances it to the next due date.
+- **Richer Analytics**: Tracks focus minutes and completed tasks by task ID, plus completion counts by priority.
 - **Overdue Task Tracking**: Highlights past-due cards based on configured system dates.
 
 ---
