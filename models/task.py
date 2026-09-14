@@ -2,7 +2,29 @@
 
 import json
 import uuid
-from typing import Any
+from datetime import date
+from enum import Enum
+from typing import Any, TypeVar
+
+
+class TaskPriority(str, Enum):
+    """Supported task priority values."""
+
+    LOW = "LOW"
+    HIGH = "HIGH"
+
+
+class TaskStatus(str, Enum):
+    """Supported Kanban column values."""
+
+    TO_DO = "To Do"
+    IN_PROGRESS = "In Progress"
+    DONE = "Done"
+
+
+DEFAULT_PRIORITY = TaskPriority.LOW
+DEFAULT_STATUS = TaskStatus.TO_DO
+EnumValue = TypeVar("EnumValue", bound=Enum)
 
 
 class Task:
@@ -11,25 +33,143 @@ class Task:
     def __init__(
         self,
         title: str,
-        priority: str = "LOW",
-        status: str = "To Do",
+        priority: str | TaskPriority = DEFAULT_PRIORITY,
+        status: str | TaskStatus = DEFAULT_STATUS,
         due_date: str = "",
         tags: list[str] | None = None,
         subtasks: list[dict[str, Any]] | None = None,
         task_id: str | None = None,
     ) -> None:
-        """Initialize a new Task instance."""
-        self.task_id: str = task_id or str(uuid.uuid4())
-        self.title: str = title
-        self.priority: str = priority
-        self.status: str = status
-        self.due_date: str = due_date
-        self.tags: list[str] = tags if tags is not None else []
-        self.subtasks: list[dict[str, Any]] = subtasks if subtasks is not None else []
+        """Initialize a validated Task instance."""
+        self.task_id: str = self._validate_task_id(task_id or str(uuid.uuid4()))
+        self.title = title
+        self.priority = priority
+        self.status = status
+        self.due_date = due_date
+        self.tags = tags
+        self.subtasks = subtasks
+
+    @staticmethod
+    def _validate_task_id(task_id: str) -> str:
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise ValueError("task_id must be a non-empty string")
+        return task_id.strip()
+
+    @staticmethod
+    def _validate_title(title: str) -> str:
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError("title must be a non-empty string")
+        return title.strip()
+
+    @staticmethod
+    def _validate_enum(
+        value: str | Enum, enum_type: type[EnumValue], field: str
+    ) -> EnumValue:
+        try:
+            return enum_type(value)
+        except (TypeError, ValueError) as err:
+            allowed = ", ".join(member.value for member in enum_type)
+            raise ValueError(f"{field} must be one of: {allowed}") from err
+
+    @staticmethod
+    def _validate_due_date(due_date: str) -> str:
+        if not isinstance(due_date, str):
+            raise ValueError("due_date must be an ISO date string")
+        if due_date:
+            try:
+                date.fromisoformat(due_date)
+            except ValueError as err:
+                raise ValueError("due_date must use YYYY-MM-DD format") from err
+        return due_date
+
+    @staticmethod
+    def _validate_tags(tags: list[str] | None) -> list[str]:
+        if tags is None:
+            return []
+        if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+            raise ValueError("tags must be a list of strings")
+        normalized_tags: list[str] = []
+        for tag in tags:
+            normalized_tag = tag.strip()
+            if normalized_tag and normalized_tag not in normalized_tags:
+                normalized_tags.append(normalized_tag)
+        return normalized_tags
+
+    @staticmethod
+    def _validate_subtasks(
+        subtasks: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        if subtasks is None:
+            return []
+        if not isinstance(subtasks, list):
+            raise ValueError("subtasks must be a list")
+
+        validated_subtasks: list[dict[str, Any]] = []
+        for subtask in subtasks:
+            if not isinstance(subtask, dict):
+                raise ValueError("each subtask must be an object")
+            subtask_title = subtask.get("title")
+            completed = subtask.get("completed", False)
+            if not isinstance(subtask_title, str) or not subtask_title.strip():
+                raise ValueError("each subtask requires a non-empty title")
+            if not isinstance(completed, bool):
+                raise ValueError("subtask completed must be a boolean")
+            validated_subtasks.append(
+                {"title": subtask_title.strip(), "completed": completed}
+            )
+        return validated_subtasks
+
+    @property
+    def title(self) -> str:
+        return self._title
+
+    @title.setter
+    def title(self, value: str) -> None:
+        self._title = self._validate_title(value)
+
+    @property
+    def priority(self) -> TaskPriority:
+        return self._priority
+
+    @priority.setter
+    def priority(self, value: str | TaskPriority) -> None:
+        self._priority = self._validate_enum(value, TaskPriority, "priority")
+
+    @property
+    def status(self) -> TaskStatus:
+        return self._status
+
+    @status.setter
+    def status(self, value: str | TaskStatus) -> None:
+        self._status = self._validate_enum(value, TaskStatus, "status")
+
+    @property
+    def due_date(self) -> str:
+        return self._due_date
+
+    @due_date.setter
+    def due_date(self, value: str) -> None:
+        self._due_date = self._validate_due_date(value)
+
+    @property
+    def tags(self) -> list[str]:
+        return self._tags
+
+    @tags.setter
+    def tags(self, value: list[str] | None) -> None:
+        self._tags = self._validate_tags(value)
+
+    @property
+    def subtasks(self) -> list[dict[str, Any]]:
+        return self._subtasks
+
+    @subtasks.setter
+    def subtasks(self, value: list[dict[str, Any]] | None) -> None:
+        self._subtasks = self._validate_subtasks(value)
 
     def mark_completed(self) -> None:
         """Mark task status as Done and set subtasks to completed."""
-        self.status = "Done"
+        self.status = TaskStatus.DONE
         for subtask in self.subtasks:
             subtask["completed"] = True
 
@@ -38,8 +178,8 @@ class Task:
         return {
             "task_id": self.task_id,
             "title": self.title,
-            "priority": self.priority,
-            "status": self.status,
+            "priority": self.priority.value,
+            "status": self.status.value,
             "due_date": self.due_date,
             "tags": self.tags,
             "subtasks": self.subtasks,
@@ -52,8 +192,8 @@ class Task:
         return (
             self.task_id,
             self.title,
-            self.priority,
-            self.status,
+            self.priority.value,
+            self.status.value,
             self.due_date,
             tags_str,
             subtasks_json,
@@ -65,8 +205,8 @@ class Task:
         return cls(
             task_id=data.get("task_id"),
             title=data.get("title", ""),
-            priority=data.get("priority", "LOW"),
-            status=data.get("status", "To Do"),
+            priority=data.get("priority", DEFAULT_PRIORITY),
+            status=data.get("status", DEFAULT_STATUS),
             due_date=data.get("due_date", ""),
             tags=data.get("tags", []),
             subtasks=data.get("subtasks", []),
@@ -90,7 +230,9 @@ class Task:
         subtasks: list[dict[str, Any]] = []
         if len(row) > 6 and row[6]:
             try:
-                subtasks = json.loads(row[6])
+                decoded_subtasks = json.loads(row[6])
+                if isinstance(decoded_subtasks, list):
+                    subtasks = decoded_subtasks
             except (json.JSONDecodeError, TypeError):
                 subtasks = []
 

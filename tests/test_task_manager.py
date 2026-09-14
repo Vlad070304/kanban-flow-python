@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from contextlib import closing
 
-from models.task import Task
+from models.task import Task, TaskPriority, TaskStatus
 from services.task_manager import TaskManager
 
 
@@ -24,6 +24,52 @@ class TestTaskModel(unittest.TestCase):
         )
         self.assertEqual(task.title, "Default Task")
         self.assertEqual(task.status, "To Do")
+        self.assertEqual(task.priority, TaskPriority.LOW)
+        self.assertEqual(task.status, TaskStatus.TO_DO)
+
+    def test_task_validation_normalizes_supported_values(self) -> None:
+        """Verifies valid fields are normalized at the model boundary."""
+        task = Task(
+            title="  Valid task  ",
+            priority=TaskPriority.HIGH,
+            tags=[" urgent ", "urgent", " "],
+            subtasks=[{"title": "  Step  ", "completed": False}],
+        )
+
+        self.assertEqual(task.title, "Valid task")
+        self.assertEqual(task.tags, ["urgent"])
+        self.assertEqual(task.subtasks, [{"title": "Step", "completed": False}])
+        self.assertEqual(task.to_dict()["priority"], "HIGH")
+
+    def test_task_validation_rejects_invalid_values(self) -> None:
+        """Verifies unsupported task fields raise clear validation errors."""
+        invalid_values = [
+            ({"title": "Task", "priority": "MEDIUM"}, "priority"),
+            ({"title": "Task", "status": "Blocked"}, "status"),
+            ({"title": "Task", "due_date": "tomorrow"}, "due_date"),
+            ({"title": "Task", "tags": ["valid", 1]}, "tags"),
+            (
+                {"title": "Task", "subtasks": [{"title": "", "completed": False}]},
+                "subtask",
+            ),
+        ]
+
+        for fields, field_name in invalid_values:
+            with self.subTest(field=field_name):
+                with self.assertRaisesRegex(ValueError, field_name):
+                    Task(**fields)
+
+    def test_task_assignment_preserves_validation(self) -> None:
+        """Verifies updates through public fields remain validated."""
+        task = Task("Task")
+
+        task.status = "Done"
+        task.priority = TaskPriority.HIGH
+        self.assertEqual(task.to_dict()["status"], "Done")
+        self.assertEqual(task.to_dict()["priority"], "HIGH")
+
+        with self.assertRaises(ValueError):
+            task.due_date = "tomorrow"
 
     def test_task_db_row_roundtrip(self) -> None:
         """Verifies DB tuple conversion produces identical object fields."""
