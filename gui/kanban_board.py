@@ -18,6 +18,7 @@ from gui.widgets.kanban_card import KanbanCard
 from models.task import Task
 from services.event_logger import EventLogger
 from services.notification_service import notify_due_tasks, send_notification
+from services.storage_errors import StorageError
 from services.storage_paths import get_app_data_dir, get_app_data_path
 from services.task_manager import TaskManager
 
@@ -74,9 +75,14 @@ class KanbanBoard(tk.Frame):
     def save_board_state(self) -> bool:
         """Public interface for saving board state to database safely."""
         try:
-            self.task_manager.save_to_file()
+            if not self.task_manager.save_to_file():
+                raise StorageError(
+                    "save tasks",
+                    self.task_manager.filepath,
+                    RuntimeError("unknown storage error"),
+                )
             return True
-        except (sqlite3.Error, OSError) as err:
+        except (StorageError, sqlite3.Error, OSError) as err:
             LOGGER.error("Error saving task data: %s", err)
             messagebox.showerror("Save Error", f"Failed to save data changes:\n{err}")
             return False
@@ -585,7 +591,13 @@ class KanbanBoard(tk.Frame):
 
             self._notify_due_tasks()
 
-        except (sqlite3.Error, OSError, AttributeError, ValueError) as err:
+        except (
+            StorageError,
+            sqlite3.Error,
+            OSError,
+            AttributeError,
+            ValueError,
+        ) as err:
             LOGGER.error("Failed to load task data from file: %s", err)
             messagebox.showerror(
                 "Load Error", f"Could not load saved task data:\n{err}"

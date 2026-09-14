@@ -2,13 +2,17 @@
 
 import datetime
 import json
+import logging
 import sqlite3
 from contextlib import closing
 from pathlib import Path
 from typing import Any
 
 from models.task import Task
+from services.storage_errors import StorageError
 from services.storage_paths import get_app_data_path
+
+LOGGER = logging.getLogger(__name__)
 
 
 class TaskManager:
@@ -34,37 +38,41 @@ class TaskManager:
 
     def _init_db(self) -> None:
         """Initialize the database and apply all pending schema migrations."""
-        with closing(self._get_connection()) as conn, conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS schema_migrations (
-                    version INTEGER PRIMARY KEY,
-                    applied_at TEXT NOT NULL
-                );
-                """
-            )
-            applied_versions = {
-                row[0]
-                for row in conn.execute(
-                    "SELECT version FROM schema_migrations ORDER BY version;"
-                )
-            }
-
-            migrations = {1: self._migration_001_initial_schema}
-            for version in range(1, self.CURRENT_SCHEMA_VERSION + 1):
-                if version in applied_versions:
-                    continue
-                migrations[version](conn)
+        try:
+            with closing(self._get_connection()) as conn, conn:
                 conn.execute(
                     """
-                    INSERT INTO schema_migrations (version, applied_at)
-                    VALUES (?, ?);
-                    """,
-                    (
-                        version,
-                        datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    ),
+                    CREATE TABLE IF NOT EXISTS schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        applied_at TEXT NOT NULL
+                    );
+                    """
                 )
+                applied_versions = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT version FROM schema_migrations ORDER BY version;"
+                    )
+                }
+
+                migrations = {1: self._migration_001_initial_schema}
+                for version in range(1, self.CURRENT_SCHEMA_VERSION + 1):
+                    if version in applied_versions:
+                        continue
+                    migrations[version](conn)
+                    conn.execute(
+                        """
+                        INSERT INTO schema_migrations (version, applied_at)
+                        VALUES (?, ?);
+                        """,
+                        (
+                            version,
+                            datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        ),
+                    )
+        except (OSError, sqlite3.Error) as err:
+            LOGGER.exception("Database initialization failed for %s", self.db_path)
+            raise StorageError("initialize database", self.db_path, err) from err
 
     @staticmethod
     def _migration_001_initial_schema(conn: sqlite3.Connection) -> None:
@@ -111,21 +119,22 @@ class TaskManager:
     def remove_task(self, task_id: str) -> bool:
         """Remove a task matching task_id from memory and database."""
         initial_count = len(self.tasks)
-        self.tasks = [t for t in self.tasks if t.task_id != task_id]
-        if len(self.tasks) < initial_count:
+        updated_tasks = [t for t in self.tasks if t.task_id != task_id]
+        if len(updated_tasks) < initial_count:
             try:
                 with closing(self._get_connection()) as conn:
                     with conn:
                         conn.execute("DELETE FROM tasks WHERE task_id = ?;", (task_id,))
+                self.tasks = updated_tasks
                 return True
-            except sqlite3.Error:
+            except (OSError, sqlite3.Error):
+                LOGGER.exception("Delete task failed for %s", self.db_path)
                 return False
         return False
 
-    def clear_done(self) -> None:
+    def clear_done(self) -> bool:
         """Remove all completed tasks with status 'Done' from memory and database."""
         done_ids = [t.task_id for t in self.tasks if t.status == "Done"]
-        self.tasks = [t for t in self.tasks if t.status != "Done"]
         try:
             with closing(self._get_connection()) as conn:
                 with conn:
@@ -135,8 +144,11 @@ class TaskManager:
                             f"DELETE FROM tasks WHERE task_id IN ({placeholders});",
                             done_ids,
                         )
-        except sqlite3.Error:
-            pass
+            self.tasks = [t for t in self.tasks if t.status != "Done"]
+            return True
+        except (OSError, sqlite3.Error):
+            LOGGER.exception("Clear completed tasks failed for %s", self.db_path)
+            return False
 
     def get_due_or_overdue_tasks(self) -> list[Task]:
         """Return all incomplete tasks whose due date is today or earlier."""
@@ -162,7 +174,8 @@ class TaskManager:
                     for task in self.tasks:
                         conn.execute(query, task.to_db_row())
             return True
-        except sqlite3.Error:
+        except (OSError, sqlite3.Error):
+            LOGGER.exception("Save tasks failed for %s", self.db_path)
             return False
 
     def load_from_file(self) -> list[Task]:
@@ -177,8 +190,8 @@ class TaskManager:
                 rows = cursor.fetchall()
                 self.tasks = [Task.from_db_row(row) for row in rows]
                 return self.tasks
-        except sqlite3.Error:
-            self.tasks = []
+        except (OSError, sqlite3.Error):
+            LOGGER.exception("Load tasks failed for %s", self.db_path)
             return self.tasks
 
     def export_backup(self, target_filepath: str) -> bool:
@@ -189,6 +202,7 @@ class TaskManager:
                 json.dump(data, file, indent=4)
             return True
         except (OSError, TypeError):
+            LOGGER.exception("Export backup failed for %s", target_filepath)
             return False
 
     def restore_backup(self, source_filepath: str) -> bool:
@@ -200,6 +214,9 @@ class TaskManager:
             if not isinstance(data, list) or not all(
                 isinstance(item, dict) for item in data
             ):
+                LOGGER.warning(
+                    "Restore backup rejected invalid structure: %s", source_filepath
+                )
                 return False
 
             restored_tasks = [Task.from_dict(item) for item in data]
@@ -219,4 +236,5 @@ class TaskManager:
             self.tasks = restored_tasks
             return True
         except (OSError, json.JSONDecodeError, sqlite3.Error, TypeError, ValueError):
+            LOGGER.exception("Restore backup failed for %s", source_filepath)
             return False

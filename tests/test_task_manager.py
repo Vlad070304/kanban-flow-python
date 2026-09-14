@@ -9,8 +9,10 @@ import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
+from unittest.mock import patch
 
 from models.task import Task, TaskPriority, TaskStatus
+from services.storage_errors import StorageError
 from services.task_manager import TaskManager
 
 
@@ -134,6 +136,43 @@ class TestTaskManagerSQLite(unittest.TestCase):
         loaded = new_manager.load_from_file()
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0].task_id, task.task_id)
+
+    def test_save_failure_is_logged_without_losing_memory_state(self) -> None:
+        """Verifies failed saves are observable and preserve in-memory tasks."""
+        task = self.manager.add_task("Persistent task")
+
+        with patch.object(
+            self.manager,
+            "_get_connection",
+            side_effect=sqlite3.OperationalError("database unavailable"),
+        ):
+            with self.assertLogs("services.task_manager", level="ERROR"):
+                self.assertFalse(self.manager.save_to_file())
+
+        self.assertEqual(self.manager.tasks, [task])
+
+    def test_load_failure_is_logged_without_clearing_memory_state(self) -> None:
+        """Verifies failed loads do not discard tasks already held in memory."""
+        task = self.manager.add_task("In-memory task")
+
+        with patch.object(
+            self.manager,
+            "_get_connection",
+            side_effect=sqlite3.OperationalError("database unavailable"),
+        ):
+            with self.assertLogs("services.task_manager", level="ERROR"):
+                loaded = self.manager.load_from_file()
+
+        self.assertEqual(loaded, [task])
+
+    def test_database_initialization_raises_structured_error(self) -> None:
+        """Verifies database setup failures expose a typed storage error."""
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(StorageError) as context:
+                TaskManager(db_path=directory)
+
+        self.assertEqual(context.exception.operation, "initialize database")
+        self.assertEqual(context.exception.path, directory)
 
     def test_remove_and_clear_done(self) -> None:
         """Verifies task deletion works in memory and SQLite."""

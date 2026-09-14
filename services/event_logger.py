@@ -5,11 +5,14 @@ Service for appending, reading, and aggregating JSON event logs.
 
 import datetime
 import json
+import logging
 import os
 from collections import defaultdict
 from typing import Any, cast
 
 from services.storage_paths import get_app_data_path
+
+LOGGER = logging.getLogger(__name__)
 
 
 class EventLogger:
@@ -35,8 +38,8 @@ class EventLogger:
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
             with open(log_path, "w", encoding="utf-8") as file:
                 json.dump(logs, file, indent=4)
-        except (OSError, TypeError) as err:
-            print(f"Error saving log event: {err}")
+        except (OSError, TypeError):
+            LOGGER.exception("Save event log failed for %s", cls.LOG_FILE)
 
     @classmethod
     def read_logs(cls) -> list[dict[str, Any]]:
@@ -48,6 +51,7 @@ class EventLogger:
             with open(cls.LOG_FILE, encoding="utf-8") as file:
                 return cast(list[dict[str, Any]], json.load(file))
         except (OSError, json.JSONDecodeError):
+            LOGGER.exception("Read event log failed for %s", cls.LOG_FILE)
             return []
 
     @classmethod

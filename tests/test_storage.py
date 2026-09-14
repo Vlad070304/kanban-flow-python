@@ -40,7 +40,8 @@ class TestEventLogger(unittest.TestCase):
         """Verifies log write errors do not escape the logging service."""
         with tempfile.TemporaryDirectory() as directory:
             EventLogger.LOG_FILE = directory
-            EventLogger.log_event("TASK_COMPLETED", "Task", {})
+            with self.assertLogs("services.event_logger", level="ERROR"):
+                EventLogger.log_event("TASK_COMPLETED", "Task", {})
 
         EventLogger.LOG_FILE = self.test_log_file
 
